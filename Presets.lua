@@ -24,6 +24,8 @@ ns.BASE = {
 	["native.friendClassColor"] = false,   -- ally player names in class colour (off: white)
 	["plates.friendNameAlpha"]  = 55,      -- ally name opacity, % (100 = as the game draws it)
 	["plates.petNamesOnly"]     = true,    -- allies' pets and minions: only the name, like ally players
+	["plates.petOwner"]         = true,    -- small line under a pet's name with its owner
+	["plates.guild"]            = "none",  -- guild under/above player names: none | allies | all
 	["plates.petClassColor"]    = true,    -- pet names in the owner's class colour (white if the owner isn't found)
 	["plates.friendHealthText"] = false, -- health numbers on friendly plates (the game option is shared by all plates)
 	["plates.nameScale"]        = 115,     -- name size on all plates the addon can touch, % of the game's

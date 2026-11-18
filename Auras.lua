@@ -191,8 +191,17 @@ local function AnchorContainer(container, unitFrame)
 		local nameSpacing = (setup and setup.healthBarToNameAboveSpacing) or 2
 		offset = offset + nameHeight + nameSpacing
 	end
+	-- a guild line above the name (HealthText) takes room as well
+	offset = offset + (ns.GetSubtitleHeight and ns.GetSubtitleHeight(unitFrame) or 0)
 	container:ClearAllPoints()
 	container:SetPoint("BOTTOMLEFT", unitFrame.HealthBarsContainer, "TOPLEFT", 0, offset)
+end
+
+function ns.ReanchorAuras(unitFrame)
+	local container = containers[unitFrame]
+	if container then
+		AnchorContainer(container, unitFrame)
+	end
 end
 
 -- which rows this unit gets: { purge = bool, mine = bool, dispel = bool }

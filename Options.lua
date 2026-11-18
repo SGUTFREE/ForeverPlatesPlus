@@ -212,6 +212,11 @@ local function BuildMain()
 
 	Header(L.SECTION_GENERAL)
 	Slider("plates.nameScale", L.NAME_SCALE, L.NAME_SCALE_TT, 80, 150, 5, Percent)
+	Dropdown("plates.guild", L.GUILD, L.GUILD_TT, {
+		{ "none", L.GUILD_NONE },
+		{ "allies", L.GUILD_ALLIES },
+		{ "all", L.GUILD_ALL },
+	})
 	Checkbox("ui.minimap", L.MINIMAP_BUTTON)
 	Checkbox("native.manage", L.MANAGE_NATIVE, L.MANAGE_NATIVE_TT)
 end
@@ -265,6 +270,7 @@ local function BuildAllies()
 	Checkbox("plates.friendFullNames", L.FRIEND_FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
 	Checkbox("plates.petNamesOnly", L.PET_NAMES_ONLY, L.PET_NAMES_ONLY_TT)
 	Checkbox("plates.petClassColor", L.PET_CLASS_COLOR, L.PET_CLASS_COLOR_TT)
+	Checkbox("plates.petOwner", L.PET_OWNER, L.PET_OWNER_TT)
 
 	Header(L.SECTION_ALLY_BARS)
 	Checkbox("plates.friendHealthText", L.FRIEND_HEALTH, L.FRIEND_HEALTH_TT)

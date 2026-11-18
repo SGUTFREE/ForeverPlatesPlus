@@ -208,6 +208,9 @@ local function OnGameLayout(unitFrame)
 	state.ours = false
 	state.points = CapturePoints(unitFrame.name)
 	ApplyName(unitFrame)
+	if ns.OnNameLayout then
+		ns.OnNameLayout(unitFrame) -- the subtitle may have to move (name only <-> with a bar)
+	end
 end
 
 local function SetFullName(unitFrame, want)
@@ -332,7 +335,7 @@ local dimmed = setmetatable({}, { __mode = "k" }) -- unit frame -> true while it
 -- coloured by the owner's class (or white). Not in dungeons and raids, where the game doesn't let
 -- addons touch ally plates.
 local PET_HIDDEN_PARTS = { "HealthBarsContainer", "CastBarsContainer", "AurasFrame", "PlayerLevelDiffFrame", "ClassificationFrame" }
-local petMode = setmetatable({}, { __mode = "k" }) -- unit frame -> { r, g, b } name colour while shown as a name only
+local petMode = setmetatable({}, { __mode = "k" }) -- unit frame -> { color = { r, g, b }, owner = name|nil } while shown as a name only
 local WHITE = { 1, 1, 1 }
 
 -- the pet's tooltip lines after its name ("Pet of X", level...); secret lines are skipped
@@ -402,8 +405,8 @@ local function Stem(name)
 	return name:match("^(.*)[%z\1-\127\194-\244][\128-\191]*$")
 end
 
--- class of the pet's owner, found by the owner's name in the pet's tooltip
-local function PetOwnerClass(unit)
+-- the pet's owner (class, name), found by the owner's name in the pet's tooltip
+local function PetOwner(unit)
 	local lines = TooltipLines(unit)
 	if #lines == 0 then
 		return nil
@@ -412,7 +415,7 @@ local function PetOwnerClass(unit)
 	for _, text in ipairs(lines) do
 		for _, candidate in ipairs(candidates) do
 			if text:find(candidate.name, 1, true) then
-				return candidate.class
+				return candidate.class, candidate.name
 			end
 		end
 	end
@@ -420,7 +423,7 @@ local function PetOwnerClass(unit)
 		for _, candidate in ipairs(candidates) do
 			local stem = Stem(candidate.name)
 			if stem and text:find(stem, 1, true) then
-				return candidate.class
+				return candidate.class, candidate.name
 			end
 		end
 	end
@@ -431,10 +434,10 @@ function ns.DebugPet(unit, unitFrame)
 	if not unit then
 		return "pet=?"
 	end
-	local color = petMode[unitFrame]
+	local info = petMode[unitFrame]
 	local lines = TooltipLines(unit)
-	return ("pet=%s owner=%s tooltip=%d [%s]"):format(color == nil and "no" or (color == WHITE and "white" or "coloured"),
-		tostring(PetOwnerClass(unit)), #lines, lines[1] or "")
+	return ("pet=%s owner=%s tooltip=%d [%s]"):format(info == nil and "no" or (info.color == WHITE and "white" or "coloured"),
+		tostring((PetOwner(unit))), #lines, lines[1] or "")
 end
 
 local function ClassColor(class)
@@ -445,11 +448,11 @@ local function ClassColor(class)
 	end
 end
 
-local function PetNameColor(unit)
-	if not ns.Get("plates.petClassColor") then
-		return WHITE
-	end
-	return ClassColor(PetOwnerClass(unit)) or WHITE
+-- { color = { r, g, b }, owner = name|nil } for a pet shown as a name only
+local function PetInfo(unit)
+	local class, owner = PetOwner(unit)
+	local color = ns.Get("plates.petClassColor") and ClassColor(class) or WHITE
+	return { color = color, owner = owner }
 end
 
 local function IsAllyPet(unit)
@@ -458,9 +461,10 @@ local function IsAllyPet(unit)
 		or ns.SafeBool(UnitIsMinion and UnitIsMinion(unit)) == true
 end
 
--- color: { r, g, b } for the name, or nil to show the plate normally again
-local function SetPetNameOnly(unitFrame, color)
-	if color then
+-- info: { color, owner } for the name, or nil to show the plate normally again
+local function SetPetNameOnly(unitFrame, info)
+	if info then
+		local color = info.color
 		for _, key in ipairs(PET_HIDDEN_PARTS) do
 			local part = unitFrame[key]
 			if type(part) == "table" and part.SetAlpha then
@@ -470,7 +474,7 @@ local function SetPetNameOnly(unitFrame, color)
 		if unitFrame.name then
 			unitFrame.name:SetVertexColor(color[1], color[2], color[3])
 		end
-		petMode[unitFrame] = color
+		petMode[unitFrame] = info
 	elseif petMode[unitFrame] then
 		for _, key in ipairs(PET_HIDDEN_PARTS) do
 			local part = unitFrame[key]
@@ -485,9 +489,9 @@ end
 -- the game recolours names on its own updates: keep our pet name colour
 if type(CompactUnitFrame_UpdateName) == "function" then
 	hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
-		local color = petMode[frame]
-		if color and frame.name then
-			frame.name:SetVertexColor(color[1], color[2], color[3])
+		local info = petMode[frame]
+		if info and frame.name then
+			frame.name:SetVertexColor(info.color[1], info.color[2], info.color[3])
 		end
 	end)
 end
@@ -530,6 +534,99 @@ function ns.GetNameScale()
 	return math.max(50, math.min(200, percent)) / 100
 end
 
+------------------------------------------------------------------------
+-- subtitle: a small second line with the pet's owner or the player's guild
+------------------------------------------------------------------------
+
+-- Under the name when the plate shows only the name; above it when there is a health bar under the
+-- name (the extra aura row then moves up, see Auras).
+local SUBTITLE_SIZE = 0.85 -- of the name's font size
+local SUBTITLE_GAP = 1
+local GUILD_COLOR = { 0.85, 0.85, 0.85 }
+local subtitles = setmetatable({}, { __mode = "k" }) -- unit frame -> our font string
+local subtitleAbove = setmetatable({}, { __mode = "k" }) -- unit frame -> height of a subtitle shown above the name
+
+local function ShowsOnlyName(unitFrame)
+	return unitFrame.showOnlyName == true or petMode[unitFrame] ~= nil
+end
+
+local function SetSubtitle(unitFrame, text, color, alpha)
+	local line = subtitles[unitFrame]
+	local name = unitFrame.name
+	if not text or not name then
+		if line then
+			line:Hide()
+		end
+		if subtitleAbove[unitFrame] then
+			subtitleAbove[unitFrame] = nil
+			if ns.ReanchorAuras then
+				ns.ReanchorAuras(unitFrame)
+			end
+		end
+		return
+	end
+	if not line then
+		line = unitFrame:CreateFontString(nil, "OVERLAY")
+		subtitles[unitFrame] = line
+	end
+	local font, size, flags = name:GetFont()
+	size = (tonumber(size) or 12) * SUBTITLE_SIZE
+	if font then
+		line:SetFont(font, size, flags)
+	else
+		line:SetFontObject("SystemFont_NamePlate_Outlined")
+	end
+	if line.SetTextScale then
+		line:SetTextScale(ns.GetNameScale())
+	end
+	line:SetText(text)
+	line:SetTextColor(color[1], color[2], color[3])
+	line:SetAlpha(alpha or 1)
+	line:ClearAllPoints()
+	local above = not ShowsOnlyName(unitFrame)
+	if above then
+		line:SetPoint("BOTTOM", name, "TOP", 0, SUBTITLE_GAP)
+	else
+		line:SetPoint("TOP", name, "BOTTOM", 0, -SUBTITLE_GAP)
+	end
+	line:Show()
+	local height = above and (size * ns.GetNameScale() + SUBTITLE_GAP) or nil
+	if subtitleAbove[unitFrame] ~= height then
+		subtitleAbove[unitFrame] = height
+		if ns.ReanchorAuras then
+			ns.ReanchorAuras(unitFrame)
+		end
+	end
+end
+
+-- the subtitle font string of a plate (for /fpl debug and tests)
+function ns.GetSubtitleLine(unitFrame)
+	return subtitles[unitFrame]
+end
+
+-- extra room the aura row has to leave above the name
+function ns.GetSubtitleHeight(unitFrame)
+	return subtitleAbove[unitFrame] or 0
+end
+
+local function GuildTag(unit, kind)
+	local mode = ns.Get("plates.guild")
+	if mode ~= "allies" and mode ~= "all" then
+		return nil
+	end
+	if kind ~= "friendlyPlayer" and not (mode == "all" and kind == "enemyPlayer") then
+		return nil
+	end
+	if not GetGuildInfo then
+		return nil
+	end
+	local ok, guild = pcall(GetGuildInfo, unit)
+	if not ok or ns.IsSecret(guild) or type(guild) ~= "string" or guild == "" then
+		return nil
+	end
+	return "<" .. guild .. ">"
+end
+
 local function PlateFrame(token)
 	local plate = C_NamePlate.GetNamePlateForUnit(token)
 	return plate and plate.UnitFrame
@@ -562,19 +659,34 @@ local function Update(unit, unitFrame)
 	SetFullName(unitFrame, wantFull and true or false)
 
 	local isPet = isFriendly and ns.Get("plates.petNamesOnly") and IsAllyPet(unit)
-	SetPetNameOnly(unitFrame, isPet and PetNameColor(unit) or nil)
+	local pet = isPet and PetInfo(unit) or nil
+	SetPetNameOnly(unitFrame, pet)
 
 	local opacity = isFriendly and tonumber(ns.Get("plates.friendNameAlpha")) or 100
-	SetNameAlpha(unitFrame, opacity < 100 and math.max(opacity, 10) / 100 or nil)
+	local nameAlpha = opacity < 100 and math.max(opacity, 10) / 100 or nil
+	SetNameAlpha(unitFrame, nameAlpha)
 
 	local scale = ns.GetNameScale()
 	SetNameScale(unitFrame, scale ~= 1 and scale or nil)
+
+	if pet and pet.owner and ns.Get("plates.petOwner") then
+		SetSubtitle(unitFrame, pet.owner, pet.color, (nameAlpha or 1) * 0.85)
+	else
+		local guild = GuildTag(unit, ns.GetUnitKind(unit))
+		SetSubtitle(unitFrame, guild, GUILD_COLOR, (nameAlpha or 1) * 0.85)
+	end
 end
 
 local function Refresh(unitFrame)
 	local unit = unitFrame and frameUnit[unitFrame]
 	if unit and rawequal(ns.activePlates[unit], unitFrame) then
 		Update(unit, unitFrame)
+	end
+end
+
+function ns.OnNameLayout(unitFrame)
+	if subtitles[unitFrame] and subtitles[unitFrame]:IsShown() then
+		Refresh(unitFrame)
 	end
 end
 
@@ -677,8 +789,8 @@ local function QueuePetRefresh()
 	petRefreshQueued = true
 	C_Timer.After(0.2, function()
 		petRefreshQueued = false
-		for unitFrame, color in pairs(petMode) do
-			if color == WHITE then
+		for unitFrame, info in pairs(petMode) do
+			if not info.owner then
 				Refresh(unitFrame)
 			end
 		end
@@ -699,6 +811,7 @@ end)
 
 function M:OnInit()
 	ns.RegisterUnitEvent("UNIT_FACTION")
+	ns.RegisterUnitEvent("UNIT_NAME_UPDATE")
 	events:RegisterEvent("PLAYER_TARGET_CHANGED")
 	events:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 	pcall(events.RegisterEvent, events, "GROUP_ROSTER_UPDATE")
@@ -721,12 +834,13 @@ function M:OnPlateRemoved(_, unitFrame)
 	SetNameAlpha(unitFrame, nil)
 	SetNameScale(unitFrame, nil)
 	SetPetNameOnly(unitFrame, nil)
+	SetSubtitle(unitFrame, nil)
 	ShowNumbers(unitFrame, "both")
 	hidden[unitFrame] = nil
 end
 
 function M:OnUnitEvent(event, unit, unitFrame)
-	if event == "UNIT_FACTION" then
+	if event == "UNIT_FACTION" or event == "UNIT_NAME_UPDATE" then
 		Update(unit, unitFrame)
 	end
 end
