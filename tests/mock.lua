@@ -432,7 +432,24 @@ end
 function Settings.RegisterAddOnCategory(cat) SETTINGS.registered = cat end
 function Settings.OpenToCategory(id) SETTINGS.opened = id end
 MinimalSliderWithSteppersMixin = { Label = { Right = 1 } }
-function CreateSettingsListSectionHeaderInitializer(t) return { header = t } end
+function CreateSettingsListSectionHeaderInitializer(t, tooltip) return { header = t, tooltip = tooltip } end
+CreateFromMixins = CreateFromMixins or function(...)
+	local t = {}
+	for _, m in ipairs({ ... }) do for k, v in pairs(m) do t[k] = v end end
+	return t
+end
+-- the game's pieces for drawing page descriptions; present only when a test asks for them
+if DESCRIPTIONS_AVAILABLE then
+	SettingsListSectionHeaderMixin = { Init = function(self, initializer) self.headerInit = initializer end }
+	function Settings.CreateElementInitializer(template, data)
+		return { template = template, data = data, GetName = function(self) return self.data.name end }
+	end
+	local getTemplateInfo = C_XMLUtil.GetTemplateInfo
+	C_XMLUtil.GetTemplateInfo = function(name)
+		if name == "ForeverPlatesDescriptionTemplate" then return {} end
+		return getTemplateInfo(name)
+	end
+end
 function CreateSettingsButtonInitializer(name, text, click, tt, tags) assert(tags ~= nil); return { button = name, click = click } end
 
 -- event helper --------------------------------------------------------------

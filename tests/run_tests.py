@@ -281,16 +281,18 @@ G.IN_GROUP = False; G.FireEvent("GROUP_ROSTER_UPDATE")
 check(G.SETTINGS["FOREVERPLATES_THREAT_WARN"] is not None and G.SETTINGS["FOREVERPLATES_THREAT_WARNFROM"] is not None, "aggro warning settings in the panel")
 
 # ---- settings pages
+first = G.SETTINGS.layout.inits[1]
+check(first.header == ns.L.ABOUT_PAGE and first.tooltip == ns.L.ABOUT_MAIN, "no description template: page text goes into a header tooltip")
 pages = list(G.SETTINGS.pages.values())
-check(pages == ["Враги", "Союзники", "Полоса заклинаний", "Эффекты", "Видимость", "Угроза", "Добивание"], "settings split into pages: " + ", ".join(pages))
+check(pages == ["Враги", "Союзники", "Касты врагов", "Баффы и дебаффы", "Расположение и прозрачность", "Агро", "Зона добивания"], "settings split into pages: " + ", ".join(pages))
 S = G.SETTINGS
 check(S["FOREVERPLATES_PROFILE_PRESET"].page == "Forever Plates" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "Forever Plates", "preset and general on the main page")
 check(S["FOREVERPLATES_ENEMYTEXT_IDLE"].page == "Враги" and S["FOREVERPLATES_INFO_QUEST"].page == "Враги", "enemy numbers and quest marker on Enemies")
 check(S["FOREVERPLATES_NATIVE_FRIENDNAMESONLY"].page == "Союзники" and S["FOREVERPLATES_PLATES_PETNAMESONLY"].page == "Союзники", "ally look on Allies")
-check(S["FOREVERPLATES_CAST_TIMER"].page == "Полоса заклинаний" and S["FOREVERPLATES_CAST_INTERRUPTREADY"].page == "Полоса заклинаний", "cast extras on Cast bar")
-check(S["FOREVERPLATES_AURAS_PURGE"].page == "Эффекты" and S["FOREVERPLATES_NATIVE_NPCBUFFS"].page == "Эффекты", "aura rows and game auras on Auras")
-check(S["FOREVERPLATES_FADE_RANGE"].page == "Видимость" and S["FOREVERPLATES_NATIVE_STACKENEMIES"].page == "Видимость", "fading and stacking on Visibility")
-check(S["FOREVERPLATES_THREAT_WARN"].page == "Угроза" and S["FOREVERPLATES_KILLZONE_ENABLED"].page == "Добивание", "threat and execute pages")
+check(S["FOREVERPLATES_CAST_TIMER"].page == "Касты врагов" and S["FOREVERPLATES_CAST_INTERRUPTREADY"].page == "Касты врагов", "cast extras on Cast bar")
+check(S["FOREVERPLATES_AURAS_PURGE"].page == "Баффы и дебаффы" and S["FOREVERPLATES_NATIVE_NPCBUFFS"].page == "Баффы и дебаффы", "aura rows and game auras on Auras")
+check(S["FOREVERPLATES_FADE_RANGE"].page == "Расположение и прозрачность" and S["FOREVERPLATES_NATIVE_STACKENEMIES"].page == "Расположение и прозрачность", "fading and stacking on Visibility")
+check(S["FOREVERPLATES_THREAT_WARN"].page == "Агро" and S["FOREVERPLATES_KILLZONE_ENABLED"].page == "Зона добивания", "threat and execute pages")
 
 # ---- game options left to the game until changed
 check(cv["nameplateShowEnemyMinions"] == "1" and cv["nameplateShowEnemyMinus"] == "0" and cv["nameplateSimplifiedTypes"] == "3", "minion/minor options untouched until changed")
@@ -548,13 +550,18 @@ check(len(G.ERRORS) == 0, "no errors at the end: " + "; ".join(G.ERRORS[i] for i
 
 # ---------------------------------------------------------------- warrior, english, old stacking CVar, no LOS CVar
 old = 'CVARS = { nameplateInfoDisplay = "0", nameplateCastBarDisplay = "0", nameplateThreatDisplay = "0", nameplateEnemyNpcAuraDisplay = "0", nameplateEnemyPlayerAuraDisplay = "0", nameplateFriendlyPlayerAuraDisplay = "0", nameplateMotion = "0", nameplateShowAll = "0", nameplateShowOffscreen = "1", nameplateShowFriendlyNpcs = "1", nameplateStyle = "0" }'
-L2, ns2 = new_runtime(locale="enUS", player_class="WARRIOR", cvars_override=old)
+L2, ns2 = new_runtime(locale="enUS", player_class="WARRIOR", cvars_override=old + "; DESCRIPTIONS_AVAILABLE = true")
 G2 = L2.globals()
 G2.FireEvent("ADDON_LOADED", "ForeverPlates"); G2.FireEvent("PLAYER_LOGIN"); G2.FireEvent("PLAYER_ENTERING_WORLD"); G2.RunTimers()
 check(ns2.GetActivePreset() == "BASE", "class without a preset uses BASE")
 check(G2.CVARS["nameplateMotion"] == "1", "falls back to nameplateMotion when stacking types are missing")
 check(G2.SETTINGS["FOREVERPLATES_NATIVE_LOSFADE"] is None, "LOS slider hidden when the client lacks the CVar")
 check(ns2.L.MINE == "My debuffs with timers", "English strings on non-Russian clients")
+first = G2.SETTINGS.layout.inits[1]
+check(first.template == "ForeverPlatesDescriptionTemplate" and first.data["name"] == ns2.L.ABOUT_MAIN and first.GetExtent() >= 40, "page description drawn with our template, sized for its text")
+fake = L2.eval("function() local f = CreateFrame('Frame'); f.Title = f:CreateFontString(); return f end")()
+G2.ForeverPlatesDescriptionMixin.Init(fake, first)
+check(fake.Title.text == ns2.L.ABOUT_MAIN and fake.Title.width == 560 and fake.headerInit is not None, "description element: game header set up, then shown as wrapped text")
 L2.execute('UNITS.nameplate1 = { canAttack = true, isPlayer = false, maxHealth = 1000 }')
 G2.MakePlate("nameplate1"); G2.FireEvent("NAME_PLATE_UNIT_ADDED", "nameplate1"); G2.RunTimers()
 cont = [f for f in G2.ALL_FRAMES.values() if f.kind == "AuraContainer"]

@@ -17,8 +17,64 @@ local function Percent(value)
 	return ("%d%%"):format(math.floor(value + 0.5))
 end
 
-local function Page(name)
+------------------------------------------------------------------------
+-- page descriptions: a few lines of plain text at the top of a page
+------------------------------------------------------------------------
+
+-- Drawn with our template (Options.xml): the game's section header, re-styled as wrapped body text.
+-- Without it (template or game mixin missing) the text goes into a header's tooltip instead.
+local DESCRIPTION_TEMPLATE = "ForeverPlatesDescriptionTemplate"
+local DESCRIPTION_WIDTH = 560
+local CHARS_PER_LINE = 95
+local LINE_HEIGHT = 15
+
+local function SetUpDescriptionMixin()
+	if ForeverPlatesDescriptionMixin or not SettingsListSectionHeaderMixin then
+		return ForeverPlatesDescriptionMixin ~= nil
+	end
+	ForeverPlatesDescriptionMixin = CreateFromMixins(SettingsListSectionHeaderMixin)
+	function ForeverPlatesDescriptionMixin:Init(initializer)
+		SettingsListSectionHeaderMixin.Init(self, initializer)
+		local title = self.Title
+		title:SetFontObject("GameFontHighlight")
+		title:ClearAllPoints()
+		title:SetPoint("TOPLEFT", 7, -4)
+		title:SetWidth(DESCRIPTION_WIDTH)
+		title:SetJustifyH("LEFT")
+		title:SetJustifyV("TOP")
+		title:SetWordWrap(true)
+		title:SetText(initializer:GetName())
+	end
+	return true
+end
+
+SetUpDescriptionMixin() -- as early as possible (again at login if the game's mixin wasn't there yet)
+
+local function CanDrawDescriptions()
+	return C_XMLUtil and C_XMLUtil.GetTemplateInfo and C_XMLUtil.GetTemplateInfo(DESCRIPTION_TEMPLATE) ~= nil
+		and Settings.CreateElementInitializer ~= nil and SetUpDescriptionMixin()
+end
+
+local function Description(text)
+	if CanDrawDescriptions() then
+		local initializer = Settings.CreateElementInitializer(DESCRIPTION_TEMPLATE, { name = text })
+		local chars = #text:gsub("[\128-\191]", "") -- letters, not bytes (Cyrillic takes two)
+		local lines = math.max(1, math.ceil(chars / CHARS_PER_LINE))
+		local height = 10 + lines * LINE_HEIGHT
+		initializer.GetExtent = function()
+			return height
+		end
+		layout:AddInitializer(initializer)
+	else
+		layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L.ABOUT_PAGE, text))
+	end
+end
+
+local function Page(name, about)
 	category, layout = Settings.RegisterVerticalLayoutSubcategory(mainCategory, name)
+	if about then
+		Description(about)
+	end
 end
 
 local function Register(key, varType, label, getValue, setValue, explicitDefault)
@@ -40,8 +96,8 @@ local function Register(key, varType, label, getValue, setValue, explicitDefault
 	return setting
 end
 
-local function Header(text)
-	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(text))
+local function Header(text, tooltip)
+	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(text, tooltip))
 end
 
 local function Checkbox(key, label, tooltip)
@@ -116,6 +172,7 @@ end
 local function BuildMain()
 	mainCategory, layout = Settings.RegisterVerticalLayoutCategory(L.ADDON)
 	category = mainCategory
+	Description(L.ABOUT_MAIN)
 
 	Header(L.SECTION_PROFILE)
 	local presetEntries = {}
@@ -141,11 +198,11 @@ local function BuildMain()
 end
 
 local function BuildEnemies()
-	Page(L.PAGE_ENEMIES)
+	Page(L.PAGE_ENEMIES, L.ABOUT_ENEMIES)
 
 	Header(L.SECTION_HEALTH)
-	Checkbox("native.healthValue", L.HEALTH_VALUE)
-	Checkbox("native.healthPercent", L.HEALTH_PERCENT)
+	Checkbox("native.healthValue", L.HEALTH_VALUE, L.HEALTH_SHARED_TT)
+	Checkbox("native.healthPercent", L.HEALTH_PERCENT, L.HEALTH_SHARED_TT)
 	Dropdown("health.format", L.HEALTH_FORMAT, L.HEALTH_FORMAT_TT, {
 		{ "short", L.HEALTH_FORMAT_SHORT },
 		{ "full", L.HEALTH_FORMAT_FULL },
@@ -176,7 +233,7 @@ local function BuildEnemies()
 end
 
 local function BuildAllies()
-	Page(L.PAGE_ALLIES)
+	Page(L.PAGE_ALLIES, L.ABOUT_ALLIES)
 
 	Header(L.SECTION_ALLY_LOOK)
 	Dropdown("native.friendNamesOnly", L.FRIEND_NAMES_ONLY, L.FRIEND_NAMES_ONLY_TT, {
@@ -191,11 +248,13 @@ local function BuildAllies()
 
 	Header(L.SECTION_ALLY_BARS)
 	Checkbox("plates.friendHealthText", L.FRIEND_HEALTH, L.FRIEND_HEALTH_TT)
+
+	Header(L.SECTION_WHICH_ALLIES)
 	Checkbox("native.friendlyNpcs", L.FRIENDLY_NPCS)
 end
 
 local function BuildCast()
-	Page(L.PAGE_CAST)
+	Page(L.PAGE_CAST, L.ABOUT_CAST)
 
 	Header(L.SECTION_CAST_GAME)
 	Checkbox("native.castName", L.CAST_NAME)
@@ -210,7 +269,7 @@ local function BuildCast()
 end
 
 local function BuildAuras()
-	Page(L.PAGE_AURAS)
+	Page(L.PAGE_AURAS, L.ABOUT_AURAS)
 
 	Header(L.SECTION_MY_DEBUFFS)
 	Checkbox("auras.mine", L.MINE, L.MINE_TT)
@@ -231,7 +290,7 @@ local function BuildAuras()
 	Header(L.SECTION_ICONS)
 	Checkbox("auras.timer", L.TIMER)
 
-	Header(L.SECTION_GAME_AURAS)
+	Header(L.SECTION_GAME_AURAS, L.SECTION_GAME_AURAS_TT)
 	Checkbox("native.npcBuffs", L.NPC_BUFFS)
 	Checkbox("native.npcDebuffs", L.NPC_DEBUFFS, L.NPC_DEBUFFS_TT)
 	Checkbox("native.npcCC", L.NPC_CC)
@@ -244,7 +303,7 @@ local function BuildAuras()
 end
 
 local function BuildVisibility()
-	Page(L.PAGE_VISIBILITY)
+	Page(L.PAGE_VISIBILITY, L.ABOUT_VISIBILITY)
 
 	Header(L.SECTION_LAYOUT)
 	Checkbox("native.alwaysShow", L.ALWAYS_SHOW)
@@ -265,20 +324,22 @@ local function BuildVisibility()
 end
 
 local function BuildThreat()
-	Page(L.PAGE_THREAT)
+	Page(L.PAGE_THREAT, L.ABOUT_THREAT)
 
+	Header(L.SECTION_THREAT_GAME)
 	Dropdown("native.threat", L.THREAT, L.THREAT_TT, {
 		{ "none", L.THREAT_NONE },
 		{ "progressive", L.THREAT_PROGRESSIVE },
 		{ "flash", L.THREAT_FLASH },
 		{ "bar", L.THREAT_BAR },
 	})
+	Header(L.SECTION_THREAT_WARN)
 	Checkbox("threat.warn", L.THREAT_WARN, L.THREAT_WARN_TT)
 	Slider("threat.warnFrom", L.THREAT_WARN_FROM, L.THREAT_WARN_FROM_TT, 30, 95, 5, Percent)
 end
 
 local function BuildKillZone()
-	Page(L.PAGE_KILLZONE)
+	Page(L.PAGE_KILLZONE, L.ABOUT_KILLZONE)
 
 	Checkbox("killzone.enabled", L.KZ_ENABLED, L.KZ_ENABLED_TT)
 	Checkbox("killzone.combatOnly", L.KZ_COMBAT_ONLY, L.KZ_COMBAT_ONLY_TT)

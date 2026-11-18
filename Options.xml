@@ -1,0 +1,7 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
+	<!-- A few lines of text at the top of a settings page: the game's section header (so the settings
+	     list treats it like its own elements), re-styled by ForeverPlatesDescriptionMixin (Options.lua). -->
+	<Frame name="ForeverPlatesDescriptionTemplate" inherits="SettingsListSectionHeaderTemplate" mixin="ForeverPlatesDescriptionMixin" virtual="true">
+		<Size y="40"/>
+	</Frame>
+</Ui>
