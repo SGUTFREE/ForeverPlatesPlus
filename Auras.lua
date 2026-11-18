@@ -187,7 +187,7 @@ local function AnchorContainer(container, unitFrame)
 	local offset = padding
 	if not NameIsInsideBar() then
 		local setup = NamePlateSetupOptions
-		local nameHeight = (setup and setup.healthBarFontHeight) or 14
+		local nameHeight = ((setup and setup.healthBarFontHeight) or 14) * (ns.GetNameScale and ns.GetNameScale() or 1)
 		local nameSpacing = (setup and setup.healthBarToNameAboveSpacing) or 2
 		offset = offset + nameHeight + nameSpacing
 	end
@@ -248,7 +248,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if not HAS_CONTAINERS or (key and not key:find("^auras%.")) then
+	if not HAS_CONTAINERS or (key and not key:find("^auras%.") and key ~= "plates.nameScale") then
 		return
 	end
 	for _, container in pairs(containers) do

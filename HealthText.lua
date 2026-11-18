@@ -335,81 +335,106 @@ local PET_HIDDEN_PARTS = { "HealthBarsContainer", "CastBarsContainer", "AurasFra
 local petMode = setmetatable({}, { __mode = "k" }) -- unit frame -> { r, g, b } name colour while shown as a name only
 local WHITE = { 1, 1, 1 }
 
--- "Pet of %s", "Minion of %s"... from the game's own strings, as patterns that capture the owner's name
-local ownerPatterns
-local function OwnerPatterns()
-	if ownerPatterns then
-		return ownerPatterns
-	end
-	ownerPatterns = {}
-	for _, global in ipairs({ "UNITNAME_TITLE_PET", "UNITNAME_TITLE_MINION", "UNITNAME_TITLE_GUARDIAN",
-			"UNITNAME_TITLE_CHARM", "UNITNAME_TITLE_CREATION", "UNITNAME_TITLE_COMPANION" }) do
-		local format = _G[global]
-		if type(format) == "string" then
-			local before, after = format:match("^(.-)%%s(.*)$")
-			if before then
-				local escape = function(text)
-					return (text:gsub("[%%%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"))
-				end
-				table.insert(ownerPatterns, "^" .. escape(before) .. "(.+)" .. escape(after) .. "$")
-			end
-		end
-	end
-	return ownerPatterns
-end
-
--- the owner's name from the pet's tooltip lines (nil if the game hides it or it isn't there)
-local function PetOwnerName(unit)
+-- the pet's tooltip lines after its name ("Pet of X", level...); secret lines are skipped
+local function TooltipLines(unit)
+	local lines = {}
 	if not (C_TooltipInfo and C_TooltipInfo.GetUnit) then
-		return nil
+		return lines
 	end
 	local ok, data = pcall(C_TooltipInfo.GetUnit, unit)
 	if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then
-		return nil
+		return lines
 	end
 	for i = 2, #data.lines do
-		local text = data.lines[i] and data.lines[i].leftText
-		if type(text) == "string" and not ns.IsSecret(text) then
-			for _, pattern in ipairs(OwnerPatterns()) do
-				local owner = text:match(pattern)
-				if owner then
-					return (owner:match("^[^%-]+")) -- without the realm
+		local line = data.lines[i]
+		local text = type(line) == "table" and line.leftText
+		if not ns.IsSecret(text) and type(text) ~= "string" and type(line) == "table" and type(line.args) == "table" then
+			-- older tooltip data: the text sits in the line's args
+			for _, arg in ipairs(line.args) do
+				if type(arg) == "table" and arg.field == "leftText" then
+					text = arg.stringVal
 				end
+			end
+		end
+		if not ns.IsSecret(text) and type(text) == "string" and text ~= "" then
+			table.insert(lines, text)
+		end
+	end
+	return lines
+end
+
+-- players the owner can be: you, your group, allies whose plates are shown
+local function OwnerCandidates()
+	local candidates = {}
+	local function Add(unit)
+		if not UnitExists(unit) then
+			return
+		end
+		local name = UnitName(unit)
+		local _, class = UnitClass(unit)
+		if type(name) == "string" and not ns.IsSecret(name) and not ns.IsSecret(class) and class then
+			table.insert(candidates, { name = name, class = class })
+		end
+	end
+	Add("player")
+	for i = 1, 4 do
+		Add("party" .. i)
+	end
+	if IsInRaid and IsInRaid() then
+		for i = 1, 40 do
+			Add("raid" .. i)
+		end
+	end
+	for unit in pairs(ns.activePlates) do
+		if ns.SafeBool(UnitIsPlayer(unit)) and ns.GetUnitKind(unit) == "friendlyPlayer" then
+			Add(unit)
+		end
+	end
+	return candidates
+end
+
+-- a name without its last letter: Russian tooltips decline names ("Питомец Артроза" for Артроз)
+local function Stem(name)
+	local letters = select(2, name:gsub("[^\128-\191]", ""))
+	if letters < 4 then
+		return nil
+	end
+	return name:match("^(.*)[%z\1-\127\194-\244][\128-\191]*$")
+end
+
+-- class of the pet's owner, found by the owner's name in the pet's tooltip
+local function PetOwnerClass(unit)
+	local lines = TooltipLines(unit)
+	if #lines == 0 then
+		return nil
+	end
+	local candidates = OwnerCandidates()
+	for _, text in ipairs(lines) do
+		for _, candidate in ipairs(candidates) do
+			if text:find(candidate.name, 1, true) then
+				return candidate.class
+			end
+		end
+	end
+	for _, text in ipairs(lines) do
+		for _, candidate in ipairs(candidates) do
+			local stem = Stem(candidate.name)
+			if stem and text:find(stem, 1, true) then
+				return candidate.class
 			end
 		end
 	end
 end
 
--- class of a player with this name: you, your group, or an ally whose plate is shown
-local function ClassByName(name)
-	local function Check(unit)
-		if not UnitExists(unit) then
-			return nil
-		end
-		local unitName = UnitName(unit)
-		if ns.IsSecret(unitName) or unitName ~= name then
-			return nil
-		end
-		local _, class = UnitClass(unit)
-		return not ns.IsSecret(class) and class or nil
+-- for /fpl debug
+function ns.DebugPet(unit, unitFrame)
+	if not unit then
+		return "pet=?"
 	end
-	local class = Check("player")
-	for i = 1, 4 do
-		class = class or Check("party" .. i)
-	end
-	if not class and IsInRaid and IsInRaid() then
-		for i = 1, 40 do
-			class = class or Check("raid" .. i)
-		end
-	end
-	if not class then
-		for unit in pairs(ns.activePlates) do
-			if ns.SafeBool(UnitIsPlayer(unit)) then
-				class = class or Check(unit)
-			end
-		end
-	end
-	return class
+	local color = petMode[unitFrame]
+	local lines = TooltipLines(unit)
+	return ("pet=%s owner=%s tooltip=%d [%s]"):format(color == nil and "no" or (color == WHITE and "white" or "coloured"),
+		tostring(PetOwnerClass(unit)), #lines, lines[1] or "")
 end
 
 local function ClassColor(class)
@@ -424,8 +449,7 @@ local function PetNameColor(unit)
 	if not ns.Get("plates.petClassColor") then
 		return WHITE
 	end
-	local owner = PetOwnerName(unit)
-	return owner and ClassColor(ClassByName(owner)) or WHITE
+	return ClassColor(PetOwnerClass(unit)) or WHITE
 end
 
 local function IsAllyPet(unit)
@@ -483,6 +507,29 @@ local function SetNameAlpha(unitFrame, alpha)
 	end
 end
 
+-- name size: the game sets the font height itself (and never the text scale), so a scale on top stays
+local scaled = setmetatable({}, { __mode = "k" }) -- unit frame -> scale we set
+local function SetNameScale(unitFrame, scale)
+	local name = unitFrame.name
+	if not name or not name.SetTextScale then
+		return
+	end
+	if scale then
+		if scaled[unitFrame] ~= scale then
+			name:SetTextScale(scale)
+			scaled[unitFrame] = scale
+		end
+	elseif scaled[unitFrame] then
+		name:SetTextScale(1)
+		scaled[unitFrame] = nil
+	end
+end
+
+function ns.GetNameScale()
+	local percent = tonumber(ns.Get("plates.nameScale")) or 100
+	return math.max(50, math.min(200, percent)) / 100
+end
+
 local function PlateFrame(token)
 	local plate = C_NamePlate.GetNamePlateForUnit(token)
 	return plate and plate.UnitFrame
@@ -519,6 +566,9 @@ local function Update(unit, unitFrame)
 
 	local opacity = isFriendly and tonumber(ns.Get("plates.friendNameAlpha")) or 100
 	SetNameAlpha(unitFrame, opacity < 100 and math.max(opacity, 10) / 100 or nil)
+
+	local scale = ns.GetNameScale()
+	SetNameScale(unitFrame, scale ~= 1 and scale or nil)
 end
 
 local function Refresh(unitFrame)
@@ -568,6 +618,9 @@ function ns.DebugNames()
 							table.insert(parts, "[error]")
 						end
 					end
+				end
+				if ns.DebugPet then
+					table.insert(parts, ns.DebugPet(frameUnit[unitFrame], unitFrame))
 				end
 				ns.Print(table.concat(parts, " "))
 			end
@@ -666,6 +719,7 @@ function M:OnPlateRemoved(_, unitFrame)
 	modeByFrame[unitFrame] = nil
 	SetFullName(unitFrame, false)
 	SetNameAlpha(unitFrame, nil)
+	SetNameScale(unitFrame, nil)
 	SetPetNameOnly(unitFrame, nil)
 	ShowNumbers(unitFrame, "both")
 	hidden[unitFrame] = nil

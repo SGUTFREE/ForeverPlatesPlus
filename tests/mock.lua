@@ -316,6 +316,7 @@ function FrameMethods:GetScript(name) return self.scripts[name] end
 function CompactUnitFrame_UpdateName(frame) frame.name:SetVertexColor(0, 1, 0) end
 function UnitIsUnit(a, b) return a == b end
 function FrameMethods:SetStatusBarColor(r, g, b, a) self.barColor = { r, g, b, a } end
+function FrameMethods:SetTextScale(v) self.textScale = v end
 function UnitName(u) local d = UNITS[u]; return d and d.name end
 function IsInRaid() return false end
 UNITNAME_TITLE_PET = "Питомец %s"

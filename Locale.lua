@@ -192,6 +192,8 @@ T("PET_CLASS_COLOR_TT", "Питомец охотника — зелёный, ч�
 T("MAX_DISTANCE", "Дальность появления неймплейтов", "Nameplate distance")
 T("MAX_DISTANCE_TT", "С какого расстояния (в ярдах) у врагов появляются неймплейты. Это настройка самой игры: пока вы её не меняли здесь, аддон оставляет как есть. Игра может ограничивать максимум.", "From how far away (yards) nameplates appear. This is the game's own option: until you change it here, the addon leaves it as it is. The game may cap the maximum.")
 T("YARDS", "%d м", "%d yd")
+T("NAME_SCALE", "Размер имён", "Name size")
+T("NAME_SCALE_TT", "Размер имён на неймплейтах, в процентах от размера игры. В подземельях и рейдах у союзников не действует: туда игра аддоны не пускает.", "Name size on nameplates, % of the game's size. Not for allies in dungeons and raids: the game keeps addons out there.")
 T("SECTION_KILLZONE", "Отметка добивания", "Execute mark")
 T("KZ_ENABLED", "Показывать отметку добивания", "Show the execute mark")
 T("KZ_ENABLED_TT", "Фиолетовая черта на полоске здоровья врага: когда здоровье опускается левее неё, ваше добивающее умение убьёт цель. У жреца — «Слово Тьмы: Смерть».", "A purple line on the enemy health bar: when health drops left of it, your execute kills. For priests: Shadow Word: Death.")

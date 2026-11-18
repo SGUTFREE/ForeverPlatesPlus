@@ -26,6 +26,7 @@ ns.BASE = {
 	["plates.petNamesOnly"]     = true,    -- allies' pets and minions: only the name, like ally players
 	["plates.petClassColor"]    = true,    -- pet names in the owner's class colour (white if the owner isn't found)
 	["plates.friendHealthText"] = false, -- health numbers on friendly plates (the game option is shared by all plates)
+	["plates.nameScale"]        = 115,     -- name size on all plates the addon can touch, % of the game's
 	["plates.friendFullNames"]  = true,  -- friendly names written in full instead of cut with "..."
 	["plates.enemyFullNames"]   = true,  -- the same for enemies
 	-- health numbers on enemies by state: none | value | percent | both

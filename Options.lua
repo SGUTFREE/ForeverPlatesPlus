@@ -211,6 +211,7 @@ local function BuildMain()
 	end, L.RESET_TT, true))
 
 	Header(L.SECTION_GENERAL)
+	Slider("plates.nameScale", L.NAME_SCALE, L.NAME_SCALE_TT, 80, 150, 5, Percent)
 	Checkbox("ui.minimap", L.MINIMAP_BUTTON)
 	Checkbox("native.manage", L.MANAGE_NATIVE, L.MANAGE_NATIVE_TT)
 end
