@@ -329,9 +329,104 @@ local dimmed = setmetatable({}, { __mode = "k" }) -- unit frame -> true while it
 
 -- The game's "name only" option covers ally players, not their pets. For pets the same look is made
 -- here: the plate's other parts are made invisible (the game never sets their alpha) and the name is
--- kept white. Not in dungeons and raids, where the game doesn't let addons touch ally plates.
+-- coloured by the owner's class (or white). Not in dungeons and raids, where the game doesn't let
+-- addons touch ally plates.
 local PET_HIDDEN_PARTS = { "HealthBarsContainer", "CastBarsContainer", "AurasFrame", "PlayerLevelDiffFrame", "ClassificationFrame" }
-local petMode = setmetatable({}, { __mode = "k" }) -- unit frame -> true while shown as a name only
+local petMode = setmetatable({}, { __mode = "k" }) -- unit frame -> { r, g, b } name colour while shown as a name only
+local WHITE = { 1, 1, 1 }
+
+-- "Pet of %s", "Minion of %s"... from the game's own strings, as patterns that capture the owner's name
+local ownerPatterns
+local function OwnerPatterns()
+	if ownerPatterns then
+		return ownerPatterns
+	end
+	ownerPatterns = {}
+	for _, global in ipairs({ "UNITNAME_TITLE_PET", "UNITNAME_TITLE_MINION", "UNITNAME_TITLE_GUARDIAN",
+			"UNITNAME_TITLE_CHARM", "UNITNAME_TITLE_CREATION", "UNITNAME_TITLE_COMPANION" }) do
+		local format = _G[global]
+		if type(format) == "string" then
+			local before, after = format:match("^(.-)%%s(.*)$")
+			if before then
+				local escape = function(text)
+					return (text:gsub("[%%%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"))
+				end
+				table.insert(ownerPatterns, "^" .. escape(before) .. "(.+)" .. escape(after) .. "$")
+			end
+		end
+	end
+	return ownerPatterns
+end
+
+-- the owner's name from the pet's tooltip lines (nil if the game hides it or it isn't there)
+local function PetOwnerName(unit)
+	if not (C_TooltipInfo and C_TooltipInfo.GetUnit) then
+		return nil
+	end
+	local ok, data = pcall(C_TooltipInfo.GetUnit, unit)
+	if not ok or type(data) ~= "table" or type(data.lines) ~= "table" then
+		return nil
+	end
+	for i = 2, #data.lines do
+		local text = data.lines[i] and data.lines[i].leftText
+		if type(text) == "string" and not ns.IsSecret(text) then
+			for _, pattern in ipairs(OwnerPatterns()) do
+				local owner = text:match(pattern)
+				if owner then
+					return (owner:match("^[^%-]+")) -- without the realm
+				end
+			end
+		end
+	end
+end
+
+-- class of a player with this name: you, your group, or an ally whose plate is shown
+local function ClassByName(name)
+	local function Check(unit)
+		if not UnitExists(unit) then
+			return nil
+		end
+		local unitName = UnitName(unit)
+		if ns.IsSecret(unitName) or unitName ~= name then
+			return nil
+		end
+		local _, class = UnitClass(unit)
+		return not ns.IsSecret(class) and class or nil
+	end
+	local class = Check("player")
+	for i = 1, 4 do
+		class = class or Check("party" .. i)
+	end
+	if not class and IsInRaid and IsInRaid() then
+		for i = 1, 40 do
+			class = class or Check("raid" .. i)
+		end
+	end
+	if not class then
+		for unit in pairs(ns.activePlates) do
+			if ns.SafeBool(UnitIsPlayer(unit)) then
+				class = class or Check(unit)
+			end
+		end
+	end
+	return class
+end
+
+local function ClassColor(class)
+	local color = class and ((C_ClassColor and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(class))
+		or (RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]))
+	if color and color.r then
+		return { color.r, color.g, color.b }
+	end
+end
+
+local function PetNameColor(unit)
+	if not ns.Get("plates.petClassColor") then
+		return WHITE
+	end
+	local owner = PetOwnerName(unit)
+	return owner and ClassColor(ClassByName(owner)) or WHITE
+end
 
 local function IsAllyPet(unit)
 	return ns.SafeBool(UnitIsOtherPlayersPet and UnitIsOtherPlayersPet(unit)) == true
@@ -339,8 +434,9 @@ local function IsAllyPet(unit)
 		or ns.SafeBool(UnitIsMinion and UnitIsMinion(unit)) == true
 end
 
-local function SetPetNameOnly(unitFrame, on)
-	if on then
+-- color: { r, g, b } for the name, or nil to show the plate normally again
+local function SetPetNameOnly(unitFrame, color)
+	if color then
 		for _, key in ipairs(PET_HIDDEN_PARTS) do
 			local part = unitFrame[key]
 			if type(part) == "table" and part.SetAlpha then
@@ -348,9 +444,9 @@ local function SetPetNameOnly(unitFrame, on)
 			end
 		end
 		if unitFrame.name then
-			unitFrame.name:SetVertexColor(1, 1, 1)
+			unitFrame.name:SetVertexColor(color[1], color[2], color[3])
 		end
-		petMode[unitFrame] = true
+		petMode[unitFrame] = color
 	elseif petMode[unitFrame] then
 		for _, key in ipairs(PET_HIDDEN_PARTS) do
 			local part = unitFrame[key]
@@ -362,11 +458,12 @@ local function SetPetNameOnly(unitFrame, on)
 	end
 end
 
--- the game recolours names on its own updates: keep pet names white
+-- the game recolours names on its own updates: keep our pet name colour
 if type(CompactUnitFrame_UpdateName) == "function" then
 	hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
-		if petMode[frame] and frame.name then
-			frame.name:SetVertexColor(1, 1, 1)
+		local color = petMode[frame]
+		if color and frame.name then
+			frame.name:SetVertexColor(color[1], color[2], color[3])
 		end
 	end)
 end
@@ -417,7 +514,8 @@ local function Update(unit, unitFrame)
 	end
 	SetFullName(unitFrame, wantFull and true or false)
 
-	SetPetNameOnly(unitFrame, isFriendly and ns.Get("plates.petNamesOnly") and IsAllyPet(unit) or false)
+	local isPet = isFriendly and ns.Get("plates.petNamesOnly") and IsAllyPet(unit)
+	SetPetNameOnly(unitFrame, isPet and PetNameColor(unit) or nil)
 
 	local opacity = isFriendly and tonumber(ns.Get("plates.friendNameAlpha")) or 100
 	SetNameAlpha(unitFrame, opacity < 100 and math.max(opacity, 10) / 100 or nil)
@@ -517,9 +615,28 @@ function CheckMouseover()
 	events:SetScript("OnUpdate", lastMouseover and WatchMouseover or nil)
 end
 
+-- pets whose owner wasn't known yet (white): look again when the group changes or a player plate appears
+local petRefreshQueued = false
+local function QueuePetRefresh()
+	if petRefreshQueued then
+		return
+	end
+	petRefreshQueued = true
+	C_Timer.After(0.2, function()
+		petRefreshQueued = false
+		for unitFrame, color in pairs(petMode) do
+			if color == WHITE then
+				Refresh(unitFrame)
+			end
+		end
+	end)
+end
+
 events:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_TARGET_CHANGED" then
 		OnTargetChanged()
+	elseif event == "GROUP_ROSTER_UPDATE" then
+		QueuePetRefresh()
 	else
 		CheckMouseover()
 	end
@@ -531,12 +648,16 @@ function M:OnInit()
 	ns.RegisterUnitEvent("UNIT_FACTION")
 	events:RegisterEvent("PLAYER_TARGET_CHANGED")
 	events:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+	pcall(events.RegisterEvent, events, "GROUP_ROSTER_UPDATE")
 end
 
 function M:OnPlateAdded(unit, unitFrame)
 	frameUnit[unitFrame] = unit
 	HookHealthBar(unitFrame)
 	Update(unit, unitFrame)
+	if ns.Get("plates.petClassColor") and ns.GetUnitKind(unit) == "friendlyPlayer" then
+		QueuePetRefresh() -- maybe the owner of a pet shown in white
+	end
 end
 
 function M:OnPlateRemoved(_, unitFrame)
@@ -545,7 +666,7 @@ function M:OnPlateRemoved(_, unitFrame)
 	modeByFrame[unitFrame] = nil
 	SetFullName(unitFrame, false)
 	SetNameAlpha(unitFrame, nil)
-	SetPetNameOnly(unitFrame, false)
+	SetPetNameOnly(unitFrame, nil)
 	ShowNumbers(unitFrame, "both")
 	hidden[unitFrame] = nil
 end

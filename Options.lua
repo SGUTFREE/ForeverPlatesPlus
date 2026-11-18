@@ -146,6 +146,24 @@ local function Slider(key, label, tooltip, minValue, maxValue, step, format)
 	Settings.CreateSlider(category, setting, options, tooltip)
 end
 
+-- a game number the addon leaves alone until it is changed here: shows what the game has meanwhile
+local function GameSlider(key, label, tooltip, minValue, maxValue, step, format)
+	local setting = Register(key, Settings.VarType.Number, label,
+		function()
+			local value = tonumber(ns.Get(key))
+			if value == nil and ns.GetGameOption then
+				value = ns.GetGameOption(key)
+			end
+			return value or minValue
+		end,
+		function(value)
+			ns.Set(key, math.floor(value / step + 0.5) * step)
+		end)
+	local options = Settings.CreateSliderOptions(minValue, maxValue, step)
+	options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, format)
+	Settings.CreateSlider(category, setting, options, tooltip)
+end
+
 local function Dropdown(key, label, tooltip, entries, getValue, setValue, explicitDefault)
 	local setting = Register(key, Settings.VarType.String, label,
 		getValue or function()
@@ -245,6 +263,7 @@ local function BuildAllies()
 	Slider("plates.friendNameAlpha", L.FRIEND_NAME_ALPHA, L.FRIEND_NAME_ALPHA_TT, 20, 100, 5, Percent)
 	Checkbox("plates.friendFullNames", L.FRIEND_FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
 	Checkbox("plates.petNamesOnly", L.PET_NAMES_ONLY, L.PET_NAMES_ONLY_TT)
+	Checkbox("plates.petClassColor", L.PET_CLASS_COLOR, L.PET_CLASS_COLOR_TT)
 
 	Header(L.SECTION_ALLY_BARS)
 	Checkbox("plates.friendHealthText", L.FRIEND_HEALTH, L.FRIEND_HEALTH_TT)
@@ -307,6 +326,11 @@ local function BuildVisibility()
 
 	Header(L.SECTION_LAYOUT)
 	Checkbox("native.alwaysShow", L.ALWAYS_SHOW)
+	if ns.ClientHasCVar("nameplateMaxDistance") then
+		GameSlider("native.maxDistance", L.MAX_DISTANCE, L.MAX_DISTANCE_TT, 10, 60, 1, function(value)
+			return L.YARDS:format(math.floor(value + 0.5))
+		end)
+	end
 	Checkbox("native.stackEnemies", L.STACK_ENEMIES, L.STACK_ENEMIES_TT)
 	Checkbox("native.stackFriends", L.STACK_FRIENDS, L.STACK_FRIENDS_TT)
 	Checkbox("native.offscreen", L.OFFSCREEN, L.OFFSCREEN_TT)
@@ -341,7 +365,13 @@ end
 local function BuildKillZone()
 	Page(L.PAGE_KILLZONE, L.ABOUT_KILLZONE)
 
+	Header(L.SECTION_KILLZONE)
 	Checkbox("killzone.enabled", L.KZ_ENABLED, L.KZ_ENABLED_TT)
+	Dropdown("killzone.style", L.KZ_STYLE, L.KZ_STYLE_TT, {
+		{ "line", L.KZ_STYLE_LINE },
+		{ "zone", L.KZ_STYLE_ZONE },
+	})
+	Checkbox("killzone.targetOnly", L.KZ_TARGET_ONLY, L.KZ_TARGET_ONLY_TT)
 	Checkbox("killzone.combatOnly", L.KZ_COMBAT_ONLY, L.KZ_COMBAT_ONLY_TT)
 	Dropdown("killzone.mode", L.KZ_MODE, L.KZ_MODE_TT, {
 		{ "spell", L.KZ_MODE_SPELL },

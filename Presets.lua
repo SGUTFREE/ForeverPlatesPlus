@@ -23,7 +23,8 @@ ns.BASE = {
 	["native.friendNamesOnly"] = "always", -- never | instance | always: ally players show only the name (no bar, no numbers)
 	["native.friendClassColor"] = false,   -- ally player names in class colour (off: white)
 	["plates.friendNameAlpha"]  = 55,      -- ally name opacity, % (100 = as the game draws it)
-	["plates.petNamesOnly"]     = true,    -- allies' pets and minions: only a white name, like ally players
+	["plates.petNamesOnly"]     = true,    -- allies' pets and minions: only the name, like ally players
+	["plates.petClassColor"]    = true,    -- pet names in the owner's class colour (white if the owner isn't found)
 	["plates.friendHealthText"] = false, -- health numbers on friendly plates (the game option is shared by all plates)
 	["plates.friendFullNames"]  = true,  -- friendly names written in full instead of cut with "..."
 	["plates.enemyFullNames"]   = true,  -- the same for enemies
@@ -41,7 +42,7 @@ ns.BASE = {
 	["fade.nonTarget"]        = false,  -- not your target, while you have one
 	["fade.nonTargetAlpha"]   = 60,     -- %
 
-	-- native.enemyMinions, native.enemyMinus, native.smallMinions, native.smallMinus have no default
+	-- native.enemyMinions, native.enemyMinus, native.smallMinions, native.smallMinus, native.maxDistance have no default
 	-- on purpose: the game's own setting stays until you change it
 
 	["native.castName"]       = true,   -- nameplateCastBarDisplay bits
@@ -82,6 +83,8 @@ ns.BASE = {
 	-- execute zone on enemy health bars
 	["killzone.enabled"]      = false,
 	["killzone.combatOnly"]   = true,    -- only while you are in combat
+	["killzone.targetOnly"]   = true,    -- only on your target
+	["killzone.style"]        = "line",  -- line (just the mark) | zone (tinted part of the bar)
 	["killzone.mode"]         = "value", -- spell (damage from the spell description) | value | percent
 	["killzone.spell"]        = 0,       -- spell ID or name for "spell" mode
 	["killzone.spellBonus"]   = 0,       -- % correction to the description damage

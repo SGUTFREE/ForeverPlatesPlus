@@ -73,6 +73,7 @@ CVARS = CVARS or {
 	nameplateShowOnlyNameForFriendlyPlayerUnits = "0", nameplateUseClassColorForFriendlyPlayerUnitNames = "0",
 	nameplateShowFriendlyPlayerMinions = "0", UnitNameFriendlyMinionName = "1",
 	nameplateShowEnemyMinions = "1", nameplateShowEnemyMinus = "0", nameplateSimplifiedTypes = "3",
+	nameplateMaxDistance = "41",
 }
 local DEFAULTS = {}
 for k, v in pairs(CVARS) do DEFAULTS[k] = v end
@@ -279,8 +280,6 @@ end
 C_SpellBook = { IsSpellKnown = function(id, bank) if bank then return false end; return KNOWN_SPELLS[id] == true end }
 Enum = Enum or {}
 Enum.SpellBookSpellBank = { Player = 0, Pet = 1 }
-PLAYER_CLASS = "PRIEST"
-function UnitClass(u) return "Priest", PLAYER_CLASS end
 CASTS = {} -- unit -> { notInterruptible = bool, channel = bool }
 function UnitCastingInfo(u)
 	local c = CASTS[u]; if not c or c.channel then return end
@@ -316,6 +315,18 @@ function FrameMethods:GetScript(name) return self.scripts[name] end
 -- the game's name update: colours a friendly NPC name green
 function CompactUnitFrame_UpdateName(frame) frame.name:SetVertexColor(0, 1, 0) end
 function UnitIsUnit(a, b) return a == b end
+function FrameMethods:SetStatusBarColor(r, g, b, a) self.barColor = { r, g, b, a } end
+function UnitName(u) local d = UNITS[u]; return d and d.name end
+function IsInRaid() return false end
+UNITNAME_TITLE_PET = "Питомец %s"
+UNITNAME_TITLE_MINION = "Прислужник %s"
+RAID_CLASS_COLORS = { HUNTER = { r = 0.67, g = 0.83, b = 0.45 }, WARLOCK = { r = 0.53, g = 0.53, b = 0.93 } }
+C_TooltipInfo = { GetUnit = function(u)
+	local d = UNITS[u]; if not d then return nil end
+	local lines = { { leftText = d.name or "?" } }
+	if d.ownerLine then table.insert(lines, { leftText = d.ownerLine }) end
+	return { lines = lines }
+end }
 IN_GROUP, PLAYER_ROLE = false, "NONE"
 function IsInGroup() return IN_GROUP end
 function UnitGroupRolesAssigned() return PLAYER_ROLE end

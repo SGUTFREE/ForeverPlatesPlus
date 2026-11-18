@@ -147,6 +147,7 @@ zones_lua = L.eval("""function(unit, role)
   return out
 end""")
 zones = lambda unit, role="kill": list(zones_lua(unit, role).values())
+ns.Set("killzone.targetOnly", False)  # the checks below look at several plates at once
 check(len(zones("nameplate1")) == 0, "out of combat: no kill zone")
 G.FireEvent("PLAYER_REGEN_DISABLED")
 kz1 = zones("nameplate1")
@@ -192,7 +193,7 @@ L.execute("local uf = PLATES.nameplate6.UnitFrame; uf.CastBarsContainer = Create
 G.FireEvent("NAME_PLATE_UNIT_ADDED", "nameplate6"); G.RunTimers()
 pet = uf("nameplate6")
 check(pet.HealthBarsContainer.alpha == 0 and pet.CastBarsContainer.alpha == 0 and pet.AurasFrame.alpha == 0 and pet.PlayerLevelDiffFrame.alpha == 0, "ally pet: bar, cast bar, auras and level hidden")
-check(list(pet.name.vertex.values()) == [1, 1, 1] and abs(pet.name.alpha - 0.55) < 1e-9, "ally pet: white name at 55%")
+check(list(pet.name.vertex.values()) == [1, 1, 1] and abs(pet.name.alpha - 0.55) < 1e-9, "ally pet with unknown owner: white name at 55%")
 G.CompactUnitFrame_UpdateName(pet)
 check(list(pet.name.vertex.values()) == [1, 1, 1], "the game's name update doesn't turn it green again")
 ns.Set("plates.petNamesOnly", False)
@@ -203,6 +204,23 @@ check(uf("nameplate1").HealthBarsContainer.alpha is None, "enemy plate parts unt
 G.FireEvent("NAME_PLATE_UNIT_REMOVED", "nameplate6")
 check(pet.HealthBarsContainer.alpha == 1 and pet.name.alpha == 1, "removed pet plate gets everything back before reuse")
 check(G.SETTINGS["FOREVERPLATES_PLATES_PETNAMESONLY"] is not None, "pets checkbox in the panel")
+# pet coloured by its owner's class
+L.execute('UNITS.nameplate7 = { canAttack = false, isPlayer = false, isFriend = true, isPet = true, maxHealth = 500, name = "Костя", ownerLine = "Питомец Бу" }')
+G.MakePlate("nameplate7"); G.FireEvent("NAME_PLATE_UNIT_ADDED", "nameplate7"); G.RunTimers()
+pet7 = uf("nameplate7")
+check(list(pet7.name.vertex.values()) == [1, 1, 1], "owner not around: pet name white")
+L.execute('UNITS.party1 = { name = "Бу", class = "HUNTER", className = "Охотник", isPlayer = true }')
+G.FireEvent("GROUP_ROSTER_UPDATE"); G.RunTimers()
+v = list(pet7.name.vertex.values())
+check(abs(v[0] - 0.67) < 1e-9 and abs(v[1] - 0.83) < 1e-9, "owner joins the group: pet name in hunter green")
+G.CompactUnitFrame_UpdateName(pet7)
+v = list(pet7.name.vertex.values())
+check(abs(v[0] - 0.67) < 1e-9, "the game's name update keeps the class colour")
+ns.Set("plates.petClassColor", False)
+check(list(pet7.name.vertex.values()) == [1, 1, 1], "class colour off: white")
+ns.Set("plates.petClassColor", True)
+L.execute('UNITS.party1 = nil')
+G.FireEvent("NAME_PLATE_UNIT_REMOVED", "nameplate7")
 check(G.SETTINGS["FOREVERPLATES_PLATES_FRIENDNAMEALPHA"] is not None, "opacity slider in the panel")
 # the game switches the ally to name-only and lays it out again
 uf("nameplate3").showOnlyName = True
@@ -284,7 +302,7 @@ check(G.SETTINGS["FOREVERPLATES_THREAT_WARN"] is not None and G.SETTINGS["FOREVE
 first = G.SETTINGS.layout.inits[1]
 check(first.header == ns.L.ABOUT_PAGE and first.tooltip == ns.L.ABOUT_MAIN, "no description template: page text goes into a header tooltip")
 pages = list(G.SETTINGS.pages.values())
-check(pages == ["Враги", "Союзники", "Касты врагов", "Баффы и дебаффы", "Расположение и прозрачность", "Агро", "Зона добивания"], "settings split into pages: " + ", ".join(pages))
+check(pages == ["Враги", "Союзники", "Касты врагов", "Баффы и дебаффы", "Расположение и прозрачность", "Агро", "Подсказки класса"], "settings split into pages: " + ", ".join(pages))
 S = G.SETTINGS
 check(S["FOREVERPLATES_PROFILE_PRESET"].page == "Forever Plates" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "Forever Plates", "preset and general on the main page")
 check(S["FOREVERPLATES_ENEMYTEXT_IDLE"].page == "Враги" and S["FOREVERPLATES_INFO_QUEST"].page == "Враги", "enemy numbers and quest marker on Enemies")
@@ -292,7 +310,27 @@ check(S["FOREVERPLATES_NATIVE_FRIENDNAMESONLY"].page == "Союзники" and S
 check(S["FOREVERPLATES_CAST_TIMER"].page == "Касты врагов" and S["FOREVERPLATES_CAST_INTERRUPTREADY"].page == "Касты врагов", "cast extras on Cast bar")
 check(S["FOREVERPLATES_AURAS_PURGE"].page == "Баффы и дебаффы" and S["FOREVERPLATES_NATIVE_NPCBUFFS"].page == "Баффы и дебаффы", "aura rows and game auras on Auras")
 check(S["FOREVERPLATES_FADE_RANGE"].page == "Расположение и прозрачность" and S["FOREVERPLATES_NATIVE_STACKENEMIES"].page == "Расположение и прозрачность", "fading and stacking on Visibility")
-check(S["FOREVERPLATES_THREAT_WARN"].page == "Агро" and S["FOREVERPLATES_KILLZONE_ENABLED"].page == "Зона добивания", "threat and execute pages")
+check(S["FOREVERPLATES_THREAT_WARN"].page == "Агро" and S["FOREVERPLATES_KILLZONE_ENABLED"].page == "Подсказки класса", "threat and execute pages")
+
+# ---- execute mark: only on the target, drawn as a line by default
+ns.Set("killzone.targetOnly", True)
+check(not kz1[0].shown, "execute mark only on the target: hidden on a mob you haven't targeted")
+L.execute("PLATES.target = PLATES.nameplate1")
+G.FireEvent("PLAYER_TARGET_CHANGED")
+check(kz1[0].shown, "targeted: mark shown")
+check(kz1[0].barColor[4] == 0 and cz1[0].barColor[4] == 0, "line style: no tint, only the marks")
+ns.Set("killzone.style", "zone")
+check(abs(kz1[0].barColor[4] - 0.32) < 1e-9, "zone style: part of the bar tinted")
+ns.Set("killzone.style", "line")
+L.execute("PLATES.target = nil")
+G.FireEvent("PLAYER_TARGET_CHANGED")
+check(not kz1[0].shown, "target dropped: mark hidden")
+ns.Set("killzone.targetOnly", False)
+
+# ---- nameplate distance (a game option)
+check(cv["nameplateMaxDistance"] == "41" and S["FOREVERPLATES_NATIVE_MAXDISTANCE"].get() == 41, "distance untouched until changed; panel shows the game's value")
+S["FOREVERPLATES_NATIVE_MAXDISTANCE"].set(30)
+check(cv["nameplateMaxDistance"] == "30", "distance slider writes the game option")
 
 # ---- game options left to the game until changed
 check(cv["nameplateShowEnemyMinions"] == "1" and cv["nameplateShowEnemyMinus"] == "0" and cv["nameplateSimplifiedTypes"] == "3", "minion/minor options untouched until changed")
@@ -521,6 +559,8 @@ check(ns.Get("auras.mineMax") == 4 and c1.groups["mine"].max == 4, "slider round
 
 # reset & presets
 G.SlashCmdList.FOREVERPLATES("reset")
+L.execute("PLATES.target = PLATES.nameplate1")  # the preset shows the mark on the target only
+G.FireEvent("PLAYER_TARGET_CHANGED")
 check(ns.CountOverrides() == 0 and bit("nameplateInfoDisplay", 2) and ns.Get("killzone.value") == 350 and ns.Get("killzone.mode") == "spell" and kz1[0].value == 412, "/fpl reset restores preset values (spell mode, 412)")
 for k in ("FOREVERPLATES_KILLZONE_COMBATONLY", "FOREVERPLATES_KILLZONE_SPELLBONUS"):
     check(S[k] is not None, f"setting {k} in the panel")

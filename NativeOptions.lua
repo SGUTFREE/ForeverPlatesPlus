@@ -97,8 +97,18 @@ local OPTIONAL_BOOLS = {
 	{ key = "native.enemyMinus", cvar = "nameplateShowEnemyMinus" },
 }
 
+-- numbers with no preset default (left as the game has them until you change them)
+local OPTIONAL_NUMBERS = {
+	{ key = "native.maxDistance", cvar = "nameplateMaxDistance" }, -- how far away plates appear, yards
+}
+
 -- what the game currently has for an option (for the settings panel when the addon doesn't set it)
 function ns.GetGameOption(key)
+	for _, info in ipairs(OPTIONAL_NUMBERS) do
+		if info.key == key and CVarExists(info.cvar) then
+			return tonumber(C_CVar.GetCVar(info.cvar))
+		end
+	end
 	for _, info in ipairs(OPTIONAL_BOOLS) do
 		if info.key == key and CVarExists(info.cvar) then
 			return C_CVar.GetCVar(info.cvar) == "1"
@@ -155,6 +165,12 @@ local function ApplyAll()
 			SetBool(info.cvar, value)
 		end
 	end
+	for _, info in ipairs(OPTIONAL_NUMBERS) do
+		local value = tonumber(ns.Get(info.key))
+		if value then
+			SetNumber(info.cvar, value)
+		end
+	end
 	ApplyThreat()
 	ApplyStacking()
 	SetBool("nameplateShowAll", ns.Get("native.alwaysShow"))
@@ -200,6 +216,9 @@ for _, info in ipairs(BITS) do
 	managedCVars[info.cvar] = true
 end
 for _, info in ipairs(OPTIONAL_BOOLS) do
+	managedCVars[info.cvar] = true
+end
+for _, info in ipairs(OPTIONAL_NUMBERS) do
 	managedCVars[info.cvar] = true
 end
 managedCVars.nameplateShowFriendlyPlayerMinions = true

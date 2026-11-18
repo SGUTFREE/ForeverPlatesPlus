@@ -183,11 +183,19 @@ local function HideZone(zone)
 	end
 end
 
-local function ShouldShow(unit)
+local function IsTargetFrame(unitFrame)
+	local plate = C_NamePlate.GetNamePlateForUnit("target")
+	return plate ~= nil and rawequal(plate.UnitFrame, unitFrame)
+end
+
+local function ShouldShow(unit, unitFrame)
 	if not ns.Get("killzone.enabled") then
 		return false
 	end
 	if ns.Get("killzone.combatOnly") and not inCombat then
+		return false
+	end
+	if ns.Get("killzone.targetOnly") and not IsTargetFrame(unitFrame) then
 		return false
 	end
 	-- enemies only; if the game hides the answer, keep showing the zone
@@ -196,7 +204,7 @@ end
 
 local function Update(unit, unitFrame)
 	local zone = zones[unitFrame]
-	if not ShouldShow(unit) then
+	if not ShouldShow(unit, unitFrame) then
 		HideZone(zone)
 		return
 	end
@@ -228,6 +236,11 @@ local function Update(unit, unitFrame)
 		end
 	end
 	minValue = 0
+
+	-- "line": only the mark where the zone ends; "zone": the part of the bar is tinted as well
+	local tinted = ns.Get("killzone.style") == "zone"
+	zone.kill:SetStatusBarColor(COLOR[1], COLOR[2], COLOR[3], tinted and STYLE.kill.fill or 0)
+	zone.crit:SetStatusBarColor(COLOR[1], COLOR[2], COLOR[3], tinted and STYLE.crit.fill or 0)
 
 	zone.kill:SetMinMaxValues(minValue, maxValue)
 	zone.kill:SetValue(threshold)
@@ -276,6 +289,10 @@ events:SetScript("OnEvent", function(_, event)
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		inCombat = false
 		UpdateAll()
+	elseif event == "PLAYER_TARGET_CHANGED" then
+		if ns.Get("killzone.targetOnly") then
+			UpdateAll()
+		end
 	else
 		QueueSpellRefresh()
 	end
@@ -286,6 +303,7 @@ function M:OnInit()
 	ns.RegisterUnitEvent("UNIT_FACTION")
 	events:RegisterEvent("PLAYER_REGEN_DISABLED")
 	events:RegisterEvent("PLAYER_REGEN_ENABLED")
+	events:RegisterEvent("PLAYER_TARGET_CHANGED")
 	-- events a client might not have are skipped
 	for _, event in ipairs({ "SPELLS_CHANGED", "SPELL_TEXT_UPDATE", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP" }) do
 		pcall(events.RegisterEvent, events, event)
