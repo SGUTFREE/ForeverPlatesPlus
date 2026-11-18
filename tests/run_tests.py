@@ -280,6 +280,129 @@ ns.Set("threat.warn", True); ns.Set("threat.warnFrom", 70)
 G.IN_GROUP = False; G.FireEvent("GROUP_ROSTER_UPDATE")
 check(G.SETTINGS["FOREVERPLATES_THREAT_WARN"] is not None and G.SETTINGS["FOREVERPLATES_THREAT_WARNFROM"] is not None, "aggro warning settings in the panel")
 
+# ---- settings pages
+pages = list(G.SETTINGS.pages.values())
+check(pages == ["Враги", "Союзники", "Полоса заклинаний", "Эффекты", "Видимость", "Угроза", "Добивание"], "settings split into pages: " + ", ".join(pages))
+S = G.SETTINGS
+check(S["FOREVERPLATES_PROFILE_PRESET"].page == "Forever Plates" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "Forever Plates", "preset and general on the main page")
+check(S["FOREVERPLATES_ENEMYTEXT_IDLE"].page == "Враги" and S["FOREVERPLATES_INFO_QUEST"].page == "Враги", "enemy numbers and quest marker on Enemies")
+check(S["FOREVERPLATES_NATIVE_FRIENDNAMESONLY"].page == "Союзники" and S["FOREVERPLATES_PLATES_PETNAMESONLY"].page == "Союзники", "ally look on Allies")
+check(S["FOREVERPLATES_CAST_TIMER"].page == "Полоса заклинаний" and S["FOREVERPLATES_CAST_INTERRUPTREADY"].page == "Полоса заклинаний", "cast extras on Cast bar")
+check(S["FOREVERPLATES_AURAS_PURGE"].page == "Эффекты" and S["FOREVERPLATES_NATIVE_NPCBUFFS"].page == "Эффекты", "aura rows and game auras on Auras")
+check(S["FOREVERPLATES_FADE_RANGE"].page == "Видимость" and S["FOREVERPLATES_NATIVE_STACKENEMIES"].page == "Видимость", "fading and stacking on Visibility")
+check(S["FOREVERPLATES_THREAT_WARN"].page == "Угроза" and S["FOREVERPLATES_KILLZONE_ENABLED"].page == "Добивание", "threat and execute pages")
+
+# ---- game options left to the game until changed
+check(cv["nameplateShowEnemyMinions"] == "1" and cv["nameplateShowEnemyMinus"] == "0" and cv["nameplateSimplifiedTypes"] == "3", "minion/minor options untouched until changed")
+check(S["FOREVERPLATES_NATIVE_ENEMYMINIONS"].get() is True and S["FOREVERPLATES_NATIVE_ENEMYMINUS"].get() is False and S["FOREVERPLATES_NATIVE_SMALLMINUS"].get() is True, "panel shows the game's current values")
+S["FOREVERPLATES_NATIVE_ENEMYMINUS"].set(True)
+S["FOREVERPLATES_NATIVE_SMALLMINIONS"].set(False)
+check(cv["nameplateShowEnemyMinus"] == "1" and cv["nameplateSimplifiedTypes"] == "2", "changing them writes the game options")
+
+# ---- purgeable enemy buffs row
+check(c1.groups["purge"].enabled and c1.groups["purge"].filter == "HELPFUL|RAID_PLAYER_DISPELLABLE", "enemy: purgeable buffs row on")
+check(not c3.groups["purge"].enabled, "ally: no purge row")
+check(c1.groups["purge"].options["layout"]["layoutIndex"] < c1.groups["mine"].options["layout"]["layoutIndex"], "purge row before my debuffs")
+ns.Set("auras.purge", False)
+check(not c1.groups["purge"].enabled, "purge row can be turned off")
+ns.Set("auras.purge", True)
+
+# ---- cast bar extras
+castbar = lambda u: uf(u).CastBarsContainer.castBar
+holder_of = L.eval("""function(unit)
+  local cb = PLATES[unit].UnitFrame.CastBarsContainer.castBar
+  for _, f in ipairs(ALL_FRAMES) do if rawequal(f.parent, cb) and f.extra then return f end end
+end""")
+G.KNOWN_SPELLS[15487] = True
+G.FireEvent("SPELLS_CHANGED")
+check(G.PRINTS is not None and ns.GetInterruptSpell() == 15487, "priest with Silence: interrupt found")
+h1 = holder_of("nameplate1")
+check(h1 is not None, "enemy cast bar gets extras")
+check(holder_of("nameplate3") is None, "ally cast bar: nothing added")
+cb = castbar("nameplate1")
+cb.casting = True; cb.channeling = False; cb.value = 0.4; cb.maxValue = 1.5
+h1.scripts["OnUpdate"](h1, 0.1)
+ex = h1.extra
+check(ex.timer.shown and ex.timer.text == "1.1", "cast timer: 1.1 s left")
+cb.casting = False; cb.channeling = True; cb.value = 2.0; cb.maxValue = 3.0
+h1.scripts["OnUpdate"](h1, 0.1)
+check(ex.timer.text == "2.0", "channel timer counts down")
+cb.value = G.SECRET_VALUE
+h1.scripts["OnUpdate"](h1, 0.1)
+check(not ex.timer.shown, "secret cast timing: no timer")
+cb.channeling = False; cb.casting = True; cb.value = 0.5; cb.maxValue = 2.0
+L.execute("CASTS.nameplate1 = { notInterruptible = false }")
+G.COOLDOWNS[15487] = True
+h1.scripts["OnUpdate"](h1, 0.1)
+check(ex.interruptLayer.shown and ex.interruptLayer.alpha == 1 and abs(ex.grey.alpha - 0.55) < 1e-9, "interrupt on cooldown: interruptible cast greyed")
+G.COOLDOWNS[15487] = False
+h1.scripts["OnUpdate"](h1, 0.1)
+check(ex.grey.alpha == 0, "interrupt ready: no grey")
+L.execute("CASTS.nameplate1 = { notInterruptible = true }")
+G.COOLDOWNS[15487] = True
+h1.scripts["OnUpdate"](h1, 0.1)
+check(ex.interruptLayer.alpha == 0, "cast that can't be interrupted: never greyed")
+L.execute("CASTS.nameplate1 = { notInterruptible = SECRET_VALUE }")
+G.COOLDOWNS[15487] = G.SECRET_VALUE
+h1.scripts["OnUpdate"](h1, 0.1)
+check(ex.interruptLayer.alphaFromSecret and ex.grey.alphaFromSecret, "secret cast/cooldown flags go straight to the game")
+L.execute("CASTS.nameplate1 = nil")
+h1.scripts["OnUpdate"](h1, 0.1)
+check(not ex.interruptLayer.shown, "no cast: no grey layer")
+ns.Set("cast.timer", False)
+cb.value = 0.5
+h1.scripts["OnUpdate"](h1, 0.1)
+check(not ex.timer.shown, "timer can be turned off")
+ns.Set("cast.timer", True)
+G.COOLDOWNS[15487] = None
+G.KNOWN_SPELLS[15487] = None
+G.FireEvent("SPELLS_CHANGED")
+
+# ---- fading: out of range / not the target
+check(ns.GetRangeSpell() == 585, "priest range check uses Smite")
+L.execute("UNITS.nameplate1.inRange = false; UNITS.nameplate2.inRange = true; UNITS.nameplate3.inRange = false")
+fader = [f for f in G.ALL_FRAMES.values() if f.events["PLAYER_TARGET_CHANGED"] and f.scripts["OnUpdate"] is not None and f.events["SPELLS_CHANGED"]]
+check(len(fader) == 1, "range watch running")
+fader[0].scripts["OnUpdate"](fader[0], 0.25)
+check(abs(uf("nameplate1").alpha - 0.5) < 1e-9 and uf("nameplate2").alpha is None, "enemy out of range faded to 50%, in range untouched")
+check(uf("nameplate3").alpha is None, "allies never faded")
+L.execute("UNITS.nameplate1.inRange = true")
+fader[0].scripts["OnUpdate"](fader[0], 0.25)
+check(uf("nameplate1").alpha == 1, "back in range: full opacity")
+ns.Set("fade.nonTarget", True)
+L.execute("PLATES.target = PLATES.nameplate2")
+G.FireEvent("PLAYER_TARGET_CHANGED")
+check(abs(uf("nameplate1").alpha - 0.6) < 1e-9 and uf("nameplate2").alpha in (None, 1), "with a target, other enemies faded to 60%")
+L.execute("PLATES.target = nil")
+G.FireEvent("PLAYER_TARGET_CHANGED")
+check(uf("nameplate1").alpha == 1, "no target: nothing faded")
+ns.Set("fade.nonTarget", False)
+ns.Set("fade.range", False)
+check(fader[0].scripts["OnUpdate"] is None, "range watch stops when turned off")
+ns.Set("fade.range", True)
+L.execute("UNITS.nameplate1.inRange = nil; UNITS.nameplate2.inRange = nil; UNITS.nameplate3.inRange = nil")
+
+# ---- quest marker
+qmark = L.eval("""function(unit)
+  local uf = PLATES[unit].UnitFrame
+  for _, f in ipairs(ALL_FRAMES) do if rawequal(f.parent, uf) and f.width == 14 and f.height == 14 then return f end end
+end""")
+L.execute("UNITS.nameplate1.quest = true; UNITS.nameplate2.quest = true")
+G.FireEvent("QUEST_LOG_UPDATE"); G.FireEvent("QUEST_LOG_UPDATE"); G.RunTimers()
+q1 = qmark("nameplate1")
+check(q1 is not None and q1.shown, "quest mob gets the marker")
+check(qmark("nameplate2") is None, "players never get it")
+L.execute("UNITS.nameplate1.quest = false")
+G.FireEvent("QUEST_REMOVED"); G.RunTimers()
+check(not q1.shown, "quest done: marker gone")
+L.execute("UNITS.nameplate1.quest = true")
+ns.Set("info.quest", False)
+check(not q1.shown, "marker can be turned off")
+ns.Set("info.quest", True)
+check(q1.shown, "and on again")
+L.execute("UNITS.nameplate1.quest = nil; UNITS.nameplate2.quest = nil")
+G.FireEvent("QUEST_LOG_UPDATE"); G.RunTimers()
+
 # friendly health text
 texts = lambda u: [uf(u).HealthBarsContainer.healthBar.Text, uf(u).HealthBarsContainer.healthBar.LeftText, uf(u).HealthBarsContainer.healthBar.RightText]
 check(all(t.alpha == 0 for t in texts("nameplate3")), "health text hidden on friendly player")

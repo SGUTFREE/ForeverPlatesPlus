@@ -85,7 +85,32 @@ local BITS = {
 	{ key = "native.friendBuffs", cvar = "nameplateFriendlyPlayerAuraDisplay", enum = "NamePlateFriendlyPlayerAuraDisplay", field = "Buffs", fallback = 1 },
 	{ key = "native.friendDebuffs", cvar = "nameplateFriendlyPlayerAuraDisplay", enum = "NamePlateFriendlyPlayerAuraDisplay", field = "Debuffs", fallback = 2 },
 	{ key = "native.friendLoC", cvar = "nameplateFriendlyPlayerAuraDisplay", enum = "NamePlateFriendlyPlayerAuraDisplay", field = "LossOfControl", fallback = 3 },
+
+	-- no preset default: left as the game has them until you change them
+	{ key = "native.smallMinions", cvar = "nameplateSimplifiedTypes", enum = "NamePlateSimplifiedType", field = "Minion", fallback = 1 },
+	{ key = "native.smallMinus", cvar = "nameplateSimplifiedTypes", enum = "NamePlateSimplifiedType", field = "MinusMob", fallback = 2 },
 }
+
+-- plain on/off options with no preset default (left as the game has them until you change them)
+local OPTIONAL_BOOLS = {
+	{ key = "native.enemyMinions", cvar = "nameplateShowEnemyMinions" },
+	{ key = "native.enemyMinus", cvar = "nameplateShowEnemyMinus" },
+}
+
+-- what the game currently has for an option (for the settings panel when the addon doesn't set it)
+function ns.GetGameOption(key)
+	for _, info in ipairs(OPTIONAL_BOOLS) do
+		if info.key == key and CVarExists(info.cvar) then
+			return C_CVar.GetCVar(info.cvar) == "1"
+		end
+	end
+	for _, info in ipairs(BITS) do
+		if info.key == key and CVarExists(info.cvar) then
+			return C_CVar.GetCVarBitfield(info.cvar, EnumValue(info.enum, info.field, info.fallback)) and true or false
+		end
+	end
+	return nil
+end
 
 local THREAT_FIELDS = {
 	progressive = "Progressive",
@@ -122,6 +147,12 @@ local function ApplyAll()
 		local value = ns.Get(info.key)
 		if value ~= nil then
 			SetBit(info.cvar, EnumValue(info.enum, info.field, info.fallback), value)
+		end
+	end
+	for _, info in ipairs(OPTIONAL_BOOLS) do
+		local value = ns.Get(info.key)
+		if value ~= nil then
+			SetBool(info.cvar, value)
 		end
 	end
 	ApplyThreat()
@@ -167,6 +198,13 @@ end
 -- every CVar this module can touch, known up front
 for _, info in ipairs(BITS) do
 	managedCVars[info.cvar] = true
+end
+for _, info in ipairs(OPTIONAL_BOOLS) do
+	managedCVars[info.cvar] = true
+end
+managedCVars.nameplateShowFriendlyPlayerMinions = true
+for _, name in ipairs(WORLD_PET_NAME_CVARS) do
+	managedCVars[name] = true
 end
 for _, name in ipairs({ "nameplateThreatDisplay", "nameplateStackingTypes", "nameplateMotion", "nameplateShowAll",
 		"nameplateShowOffscreen", "nameplateShowFriendlyNpcs", "nameplateOccludedAlphaMult",

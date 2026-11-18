@@ -72,6 +72,7 @@ CVARS = CVARS or {
 	nameplateOccludedAlphaMult = "0.6", nameplateStyle = "1", nameplateDebuffPadding = "2",
 	nameplateShowOnlyNameForFriendlyPlayerUnits = "0", nameplateUseClassColorForFriendlyPlayerUnitNames = "0",
 	nameplateShowFriendlyPlayerMinions = "0", UnitNameFriendlyMinionName = "1",
+	nameplateShowEnemyMinions = "1", nameplateShowEnemyMinus = "0", nameplateSimplifiedTypes = "3",
 }
 local DEFAULTS = {}
 for k, v in pairs(CVARS) do DEFAULTS[k] = v end
@@ -266,6 +267,30 @@ function C_Spell.GetSpellInfo(idOrName)
 end
 function C_Spell.GetSpellDescription(id) local s = SPELLS[id]; return s and s.desc end
 SPELL_LOAD_REQUESTS = 0
+KNOWN_SPELLS = { [585] = true } -- Smite
+function C_Spell.IsSpellInRange(spell, unit) local u = UNITS[unit]; if not u then return nil end; return u.inRange end
+COOLDOWNS = {} -- spellID -> active (true/false/SECRET)
+function C_Spell.GetSpellCooldownDuration(spell, ignoreGCD)
+	assert(ignoreGCD == true, "interrupt check must ignore the GCD")
+	if COOLDOWNS[spell] == nil then return nil end
+	local active = COOLDOWNS[spell]
+	return { IsActive = function() return active end }
+end
+C_SpellBook = { IsSpellKnown = function(id, bank) if bank then return false end; return KNOWN_SPELLS[id] == true end }
+Enum = Enum or {}
+Enum.SpellBookSpellBank = { Player = 0, Pet = 1 }
+PLAYER_CLASS = "PRIEST"
+function UnitClass(u) return "Priest", PLAYER_CLASS end
+CASTS = {} -- unit -> { notInterruptible = bool, channel = bool }
+function UnitCastingInfo(u)
+	local c = CASTS[u]; if not c or c.channel then return end
+	return "Spell", "", 1, 1000, 2000, false, 7, c.notInterruptible, 123
+end
+function UnitChannelInfo(u)
+	local c = CASTS[u]; if not c or not c.channel then return end
+	return "Channel", "", 1, 1000, 2000, false, c.notInterruptible, 123
+end
+C_QuestLog = { UnitIsRelatedToActiveQuest = function(u) return (UNITS[u] or {}).quest == true end }
 function C_Spell.RequestLoadSpellData() SPELL_LOAD_REQUESTS = SPELL_LOAD_REQUESTS + 1 end
 
 -- units & nameplates ------------------------------------------------------
@@ -280,6 +305,14 @@ function UnitExists(u) return UNITS[u] ~= nil end
 function UnitIsMinion(u) return (UNITS[u] or {}).isMinion or false end
 function UnitIsOtherPlayersPet(u) return (UNITS[u] or {}).isPet or false end
 function FrameMethods:SetVertexColor(r, g, b) self.vertex = { r, g, b } end
+function FrameMethods:SetAlphaFromBoolean(b, yes, no)
+	if issecretvalue(b) then self.alpha = SECRET; self.alphaFromSecret = true; return end
+	assert(type(b) == "boolean", "SetAlphaFromBoolean needs a boolean")
+	self.alpha = b and yes or no
+end
+function FrameMethods:GetFont() return self.font or "Fonts\\FRIZQT__.TTF", self.fontSize or 10, "OUTLINE" end
+function FrameMethods:SetFont(f, size, flags) self.font, self.fontSize = f, size end
+function FrameMethods:GetScript(name) return self.scripts[name] end
 -- the game's name update: colours a friendly NPC name green
 function CompactUnitFrame_UpdateName(frame) frame.name:SetVertexColor(0, 1, 0) end
 function UnitIsUnit(a, b) return a == b end
@@ -316,6 +349,9 @@ function MakePlate(unit)
 			textString:SetText(AbbreviateLargeNumbers(value)); textString:Show()
 		end
 	end)
+	uf.CastBarsContainer = NewObject("Frame", uf)
+	uf.CastBarsContainer.castBar = NewObject("StatusBar", uf.CastBarsContainer)
+	uf.CastBarsContainer.castBar.Text = NewObject("FontString", uf.CastBarsContainer.castBar)
 	uf.PlayerLevelDiffFrame = NewObject("Frame", uf)
 	uf.PlayerLevelDiffFrame.width = 26
 	uf.PlayerLevelDiffFrame:SetPoint("LEFT", uf.HealthBarsContainer, "RIGHT", 2, 0)
@@ -364,11 +400,19 @@ function Settings.RegisterVerticalLayoutCategory(name)
 	SETTINGS.category, SETTINGS.layout = cat, lay
 	return cat, lay
 end
+SETTINGS.pages = {}
+function Settings.RegisterVerticalLayoutSubcategory(parent, name)
+	assert(parent and parent.GetID, "subcategory needs the main category")
+	local cat = { name = name, parent = parent, GetID = function() return 100 + #SETTINGS.pages end }
+	local lay = { inits = {}, AddInitializer = function(self, i) table.insert(self.inits, i) end }
+	table.insert(SETTINGS.pages, name)
+	return cat, lay
+end
 function Settings.RegisterProxySetting(cat, variable, varType, name, default, get, set)
 	assert(type(variable) == "string")
 	assert(type(default) == varType, ("default for %s is %s, expected %s"):format(variable, type(default), varType))
 	assert(not SETTINGS[variable], "duplicate setting " .. variable)
-	local s = { variable = variable, varType = varType, default = default, get = get, set = set, notified = 0 }
+	local s = { variable = variable, varType = varType, default = default, get = get, set = set, notified = 0, page = cat.name }
 	function s:NotifyUpdate() self.notified = self.notified + 1; self.get() end
 	SETTINGS[variable] = s
 	return s

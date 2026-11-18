@@ -32,12 +32,25 @@ ns.BASE = {
 	["enemyText.mouseover"]   = "value",
 	["enemyText.target"]      = "both",
 	["ui.minimap"]            = true,   -- minimap button
+	["info.quest"]            = true,   -- quest marker on mobs and NPCs of your active quests
+
+	-- fading enemy plates
+	["fade.range"]            = true,   -- out of range of your class spell
+	["fade.rangeAlpha"]       = 50,     -- %
+	["fade.rangeSpell"]       = 0,      -- 0 = pick by class
+	["fade.nonTarget"]        = false,  -- not your target, while you have one
+	["fade.nonTargetAlpha"]   = 60,     -- %
+
+	-- native.enemyMinions, native.enemyMinus, native.smallMinions, native.smallMinus have no default
+	-- on purpose: the game's own setting stays until you change it
 
 	["native.castName"]       = true,   -- nameplateCastBarDisplay bits
 	["native.castIcon"]       = true,
 	["native.castTarget"]     = true,
 	["native.castImportant"]  = true,
 	["native.castOnMe"]       = true,
+	["cast.timer"]            = true,   -- time left next to enemy cast bars
+	["cast.interruptReady"]   = true,   -- grey enemy cast bar while your interrupt is on cooldown
 	["native.threat"]         = "progressive", -- none | progressive | flash | bar
 	["threat.warn"]           = true,   -- early aggro warning (glow grows before you pull)
 	["threat.warnFrom"]       = 70,     -- start at this % of the threat that pulls the mob
@@ -54,6 +67,9 @@ ns.BASE = {
 	["native.friendLoC"]      = true,
 
 	-- our extra aura rows, drawn in the slot of the game's debuff row (above the name)
+	["auras.purge"]           = true,   -- HELPFUL|RAID_PLAYER_DISPELLABLE on enemies (buffs you can remove)
+	["auras.purgeSize"]       = 20,
+	["auras.purgeMax"]        = 3,
 	["auras.mine"]            = true,   -- HARMFUL|PLAYER on enemies
 	["auras.minePlayers"]     = true,
 	["auras.mineSize"]        = 22,

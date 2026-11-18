@@ -9,12 +9,16 @@ local HAS_CONTAINERS = C_XMLUtil and C_XMLUtil.GetTemplateInfo
 	and C_XMLUtil.GetTemplateInfo("CustomAuraContainerTemplate") and true or false
 
 local GROUPS = {
+	-- buffs on enemies that you can remove (Dispel Magic, Purge, Spellsteal...), with a blue frame
+	purge = { filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", sizeKey = "auras.purgeSize", maxKey = "auras.purgeMax", order = 1,
+		frame = { 0.25, 0.55, 1, 1 } },
 	-- all your debuffs on enemies (DoTs, slows, fears...)
-	mine = { filter = "HARMFUL|PLAYER", sizeKey = "auras.mineSize", maxKey = "auras.mineMax", order = 1 },
+	mine = { filter = "HARMFUL|PLAYER", sizeKey = "auras.mineSize", maxKey = "auras.mineMax", order = 2 },
 	-- debuffs you can dispel, on allies
-	dispel = { filter = "HARMFUL|RAID_PLAYER_DISPELLABLE", sizeKey = "auras.dispelSize", maxKey = "auras.dispelMax", order = 2 },
+	dispel = { filter = "HARMFUL|RAID_PLAYER_DISPELLABLE", sizeKey = "auras.dispelSize", maxKey = "auras.dispelMax", order = 3 },
 }
-local GROUP_ORDER = { "mine", "dispel" }
+local GROUP_ORDER = { "purge", "mine", "dispel" }
+local FRAME_COLOR = { 0, 0, 0, 0.9 }
 
 local SPACING = 2
 local MAX_LINE = 150
@@ -81,7 +85,8 @@ local function InitButton(container, groupKey, button)
 	-- thin dark frame + cropped icon, like the game's own aura icons
 	local back = button:CreateTexture(nil, "BACKGROUND")
 	back:SetAllPoints()
-	back:SetColorTexture(0, 0, 0, 0.9)
+	local color = GROUPS[groupKey].frame or FRAME_COLOR
+	back:SetColorTexture(color[1], color[2], color[3], color[4])
 
 	local icon = button:CreateTexture(nil, "ARTWORK")
 	icon:SetPoint("TOPLEFT", 1, -1)
@@ -190,12 +195,15 @@ local function AnchorContainer(container, unitFrame)
 	container:SetPoint("BOTTOMLEFT", unitFrame.HealthBarsContainer, "TOPLEFT", 0, offset)
 end
 
+-- which rows this unit gets: { purge = bool, mine = bool, dispel = bool }
 local function WantedGroups(unit)
 	local kind = ns.GetUnitKind(unit)
-	local mine = ns.Get("auras.mine")
-		and (kind == "enemyNpc" or (kind == "enemyPlayer" and ns.Get("auras.minePlayers")))
-	local dispel = ns.Get("auras.dispel") and kind == "friendlyPlayer"
-	return mine and true or false, dispel and true or false
+	local enemy = kind == "enemyNpc" or kind == "enemyPlayer"
+	return {
+		purge = (ns.Get("auras.purge") and enemy) and true or false,
+		mine = (ns.Get("auras.mine") and (kind == "enemyNpc" or (kind == "enemyPlayer" and ns.Get("auras.minePlayers")))) and true or false,
+		dispel = (ns.Get("auras.dispel") and kind == "friendlyPlayer") and true or false,
+	}
 end
 
 local function Disable(container)
@@ -207,10 +215,10 @@ function M:OnPlateAdded(unit, unitFrame)
 	if not HAS_CONTAINERS or not unitFrame.HealthBarsContainer then
 		return
 	end
-	local wantMine, wantDispel = WantedGroups(unit)
+	local wanted = WantedGroups(unit)
 	local container = containers[unitFrame]
 
-	if not (wantMine or wantDispel) then
+	if not (wanted.purge or wanted.mine or wanted.dispel) then
 		if container then
 			Disable(container)
 		end
@@ -222,8 +230,9 @@ function M:OnPlateAdded(unit, unitFrame)
 		containers[unitFrame] = container
 	end
 
-	container:SetAuraGroupEnabled("mine", wantMine)
-	container:SetAuraGroupEnabled("dispel", wantDispel)
+	for _, groupKey in ipairs(GROUP_ORDER) do
+		container:SetAuraGroupEnabled(groupKey, wanted[groupKey])
+	end
 	AnchorContainer(container, unitFrame)
 	container:SetEnabled(true)
 	container:SetUnit(unit)
