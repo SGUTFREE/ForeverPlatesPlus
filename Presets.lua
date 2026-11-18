@@ -10,8 +10,9 @@ local _, ns = ...
 ns.BASE = {
 	-- game (CVar) nameplate options, applied only while native.manage is on
 	["native.manage"]         = true,
-	["native.healthPercent"]  = true,   -- nameplateInfoDisplay: CurrentHealthPercent
-	["native.healthValue"]    = true,   -- nameplateInfoDisplay: CurrentHealthValue
+	-- nameplateInfoDisplay: kept on, the addon shows or hides the numbers per plate (enemyText.*, plates.friendHealth)
+	["native.healthPercent"]  = true,
+	["native.healthValue"]    = true,
 	["native.alwaysShow"]     = true,   -- nameplateShowAll
 	["native.stackEnemies"]   = true,   -- nameplateStackingTypes: Enemy (common practice)
 	["native.stackFriends"]   = false,  -- nameplateStackingTypes: Friendly (so allies don't push enemies)
@@ -21,13 +22,11 @@ ns.BASE = {
 	["health.format"]         = "short", -- short (12.3K) | full (12 345) | game
 	["health.decimals"]       = 1,       -- decimals in the short format
 	["native.friendNamesOnly"] = "always", -- never | instance | always: ally players show only the name (no bar, no numbers)
-	["native.friendClassColor"] = false,   -- ally player names in class colour (off: white)
 	["plates.petNamesOnly"]     = true,    -- allies' pets and minions: only the name, like ally players
 	["plates.petOwner"]         = true,    -- small line under a pet's name with its owner
 	["plates.guildFriends"]     = false,   -- guild of allied players (small line under / above the name)
 	["plates.guildEnemies"]     = false,   -- guild of enemy players
-	["plates.petClassColor"]    = true,    -- pet names in the owner's class colour (white if the owner isn't found)
-	["plates.friendHealthText"] = false, -- health numbers on friendly plates (the game option is shared by all plates)
+	["plates.friendHealth"]     = "none",  -- numbers on allies with a health bar: none | value | percent | both
 	["plates.friendFullNames"]  = true,  -- friendly names written in full instead of cut with "..."
 	["plates.enemyFullNames"]   = true,  -- the same for enemies
 	-- health numbers on enemies by state: none | value | percent | both
@@ -77,41 +76,60 @@ ns.BASE = {
 	["auras.mineMax"]         = 6,
 	["auras.dispel"]          = true,   -- HARMFUL|RAID_PLAYER_DISPELLABLE on allies
 	["auras.dispelMax"]       = 3,
-	["auras.timer"]           = true,
+	["auras.mineTimer"]       = true,   -- time left on the icons of each row
+	["auras.purgeTimer"]      = true,
+	["auras.dispelTimer"]     = true,
 
 	-- appearance of each part (Look.lua): size and opacity in %, offsets in pixels (right, up);
 	-- "place" of the small second line: auto (under a name-only plate, above a plate with a bar) | above | below
 	["look.enemyName.scale"]   = 115,
 	["look.enemyName.alpha"]   = 100,
-	["look.friendName.scale"]  = 115,
-	["look.friendName.alpha"]  = 55,     -- ally names see-through, so allies don't distract
-	["look.guild.scale"]       = 100,    -- of the name's size
-	["look.guild.alpha"]       = 85,     -- of the name's opacity
-	["look.guild.place"]       = "auto",
-	["look.petOwner.scale"]    = 100,
-	["look.petOwner.alpha"]    = 85,
-	["look.petOwner.place"]    = "auto",
-	["look.health.scale"]      = 100,
-	["look.health.alpha"]      = 100,
-	["look.castText.scale"]    = 115,    -- spell name a bit bigger than the game's
+	["look.enemyName.color"]   = "game",  -- game | class (players) | white | custom
+	["look.enemyName.rgb"]     = "ffffffff",
+	["look.enemyGuild.scale"]  = 100,     -- of the name's size
+	["look.enemyGuild.alpha"]  = 85,      -- of the name's opacity
+	["look.enemyGuild.place"]  = "auto",
+	["look.enemyGuild.rgb"]    = "ffd9d9d9",
+	["look.enemyHealth.scale"] = 100,
+	["look.enemyHealth.alpha"] = 100,
+	["look.castText.scale"]    = 115,     -- spell name a bit bigger than the game's
 	["look.castText.alpha"]    = 100,
 	["look.castTimer.scale"]   = 115,
 	["look.castTimer.alpha"]   = 100,
-	["look.mine.scale"]        = 100,    -- 100% = 22 px
+	["look.mine.scale"]        = 100,     -- 100% = 22 px
 	["look.mine.alpha"]        = 100,
-	["look.purge.scale"]       = 100,    -- 100% = 20 px
+	["look.purge.scale"]       = 100,     -- 100% = 20 px
 	["look.purge.alpha"]       = 100,
-	["look.dispel.scale"]      = 100,    -- 100% = 16 px
-	["look.dispel.alpha"]      = 100,
 	["look.gameBuffs.scale"]   = 100,
 	["look.gameBuffs.alpha"]   = 100,
 	["look.gameDebuffs.scale"] = 100,
 	["look.gameDebuffs.alpha"] = 100,
 	["look.gameCC.scale"]      = 100,
 	["look.gameCC.alpha"]      = 100,
-	["look.quest.scale"]       = 100,    -- 100% = 14 px
+	["look.quest.scale"]       = 100,     -- 100% = 14 px
 	["look.quest.alpha"]       = 100,
-	-- every offset ("look.<element>.x" / ".y", "look.addonAuras.x" / ".y" for our three aura rows) is 0 by default
+	["look.friendName.scale"]  = 115,
+	["look.friendName.alpha"]  = 55,      -- ally names see-through, so allies don't distract
+	["look.friendName.color"]  = "white", -- class | white | custom
+	["look.friendName.rgb"]    = "ffffffff",
+	["look.friendGuild.scale"] = 100,
+	["look.friendGuild.alpha"] = 85,
+	["look.friendGuild.place"] = "auto",
+	["look.friendGuild.rgb"]   = "ffd9d9d9",
+	["look.friendHealth.scale"] = 100,
+	["look.friendHealth.alpha"] = 100,
+	["look.dispel.scale"]      = 100,     -- 100% = 16 px
+	["look.dispel.alpha"]      = 100,
+	["look.friendGame.scale"]  = 100,     -- the game's own icons on allies
+	["look.friendGame.alpha"]  = 100,
+	["look.petName.scale"]     = 115,
+	["look.petName.alpha"]     = 55,
+	["look.petName.color"]     = "class", -- class (the owner's) | white | custom
+	["look.petName.rgb"]       = "ffffffff",
+	["look.petOwner.scale"]    = 100,
+	["look.petOwner.alpha"]    = 85,
+	["look.petOwner.place"]    = "auto",
+	-- every offset ("look.<element>.x" / ".y", "look.addonAuras.x" / ".y" for the enemy's two aura rows) is 0 by default
 
 	-- execute zone on enemy health bars
 	["killzone.enabled"]      = false,

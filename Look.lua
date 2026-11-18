@@ -5,15 +5,20 @@ local _, ns = ...
 -- "look.<element>.<scale|alpha|x|y|place>". Sizes and opacity are percents, offsets are pixels.
 -- The modules draw the parts; this file only knows the elements and how to read their settings.
 
--- order = order in the settings dropdown
+-- every element; the settings pages (Враг / Союзник / Питомец) pick theirs
 ns.LOOK_ELEMENTS = {
-	"enemyName", "friendName", "guild", "petOwner", "health", "castText", "castTimer",
-	"mine", "purge", "dispel", "gameBuffs", "gameDebuffs", "gameCC", "quest",
+	-- enemies
+	"enemyName", "enemyGuild", "enemyHealth", "castText", "castTimer", "mine", "purge",
+	"gameBuffs", "gameDebuffs", "gameCC", "quest",
+	-- allies
+	"friendName", "friendGuild", "friendHealth", "dispel", "friendGame",
+	-- allies' pets
+	"petName", "petOwner",
 }
 
-local HAS_PLACE = { guild = true, petOwner = true } -- the small line under / above the name
--- our three aura rows are one row on the plate: one shared offset
-local OFFSET_ELEMENT = { mine = "addonAuras", purge = "addonAuras", dispel = "addonAuras" }
+local HAS_PLACE = { enemyGuild = true, friendGuild = true, petOwner = true } -- the small line under / above the name
+-- the enemy's two aura rows of the addon are one row on the plate: one shared offset
+local OFFSET_ELEMENT = { mine = "addonAuras", purge = "addonAuras" }
 
 -- offsets start at 0 (the game's place); written here instead of one line per element in Presets.lua
 for _, element in ipairs(ns.LOOK_ELEMENTS) do
@@ -76,12 +81,36 @@ function ns.LookPlace(element)
 	return "auto"
 end
 
+-- name colour: "game" (as the game colours it) | "class" | "white" | "custom"
+function ns.LookColorMode(element)
+	return ns.Get("look." .. element .. ".color") or "game"
+end
+
+-- a colour stored as "AARRGGBB" (the settings colour swatch writes that) -> r, g, b
+function ns.HexToRGB(hex)
+	if type(hex) ~= "string" or not hex:match("^%x%x%x%x%x%x%x%x$") then
+		return 1, 1, 1
+	end
+	return tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255, tonumber(hex:sub(7, 8), 16) / 255
+end
+
+-- the element's own colour (custom name colour, guild colour)
+function ns.LookRGB(element)
+	return ns.HexToRGB(ns.Get("look." .. element .. ".rgb"))
+end
+
 -- every key of an element (its shared offset included)
 function ns.LookKeys(element)
 	local keys = {}
 	for _, prop in ipairs({ "scale", "alpha", "x", "y", "place" }) do
 		if ns.LookHas(element, prop) then
 			table.insert(keys, ns.LookKey(element, prop))
+		end
+	end
+	for _, prop in ipairs({ "color", "rgb" }) do
+		local key = "look." .. element .. "." .. prop
+		if ns.BASE[key] ~= nil then
+			table.insert(keys, key)
 		end
 	end
 	return keys

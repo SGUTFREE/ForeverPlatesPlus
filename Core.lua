@@ -82,6 +82,69 @@ local function Migrate(overrides)
 	end
 end
 
+-- 0.11: the settings are split by frame (enemy / ally / pet); a few switches became choices
+local function MigrateSides(overrides)
+	local function Copy(old, news)
+		local value = overrides[old]
+		if value == nil then
+			return
+		end
+		for _, new in ipairs(news) do
+			if overrides[new] == nil then
+				overrides[new] = value
+			end
+		end
+		overrides[old] = nil
+	end
+	for _, prop in ipairs({ "scale", "alpha", "x", "y", "place" }) do
+		Copy("look.guild." .. prop, { "look.enemyGuild." .. prop, "look.friendGuild." .. prop })
+		Copy("look.health." .. prop, { "look.enemyHealth." .. prop, "look.friendHealth." .. prop })
+	end
+	-- pets had the ally name's look
+	for _, prop in ipairs({ "scale", "alpha" }) do
+		local value = overrides["look.friendName." .. prop]
+		if value ~= nil and overrides["look.petName." .. prop] == nil then
+			overrides["look.petName." .. prop] = value
+		end
+	end
+	-- the ally row of icons got its own offset
+	for _, axis in ipairs({ "x", "y" }) do
+		local value = overrides["look.addonAuras." .. axis]
+		if value ~= nil and overrides["look.dispel." .. axis] == nil then
+			overrides["look.dispel." .. axis] = value
+		end
+	end
+	if overrides["native.friendClassColor"] ~= nil then
+		if overrides["native.friendClassColor"] == true and overrides["look.friendName.color"] == nil then
+			overrides["look.friendName.color"] = "class"
+		end
+		overrides["native.friendClassColor"] = nil
+	end
+	if overrides["plates.petClassColor"] ~= nil then
+		if overrides["plates.petClassColor"] == false and overrides["look.petName.color"] == nil then
+			overrides["look.petName.color"] = "white"
+		end
+		overrides["plates.petClassColor"] = nil
+	end
+	if overrides["plates.friendHealthText"] ~= nil then
+		if overrides["plates.friendHealthText"] == true and overrides["plates.friendHealth"] == nil then
+			overrides["plates.friendHealth"] = "both"
+		end
+		overrides["plates.friendHealthText"] = nil
+	end
+	if overrides["auras.timer"] ~= nil then
+		for _, group in ipairs({ "mine", "purge", "dispel" }) do
+			if overrides["auras." .. group .. "Timer"] == nil then
+				overrides["auras." .. group .. "Timer"] = overrides["auras.timer"]
+			end
+		end
+		overrides["auras.timer"] = nil
+	end
+	-- the game's health number switches are always on now: what to show is chosen per plate
+	overrides["native.healthValue"] = nil
+	overrides["native.healthPercent"] = nil
+end
+
 local function InitDB()
 	ForeverPlatesCharDB = ForeverPlatesCharDB or {}
 	local db = ForeverPlatesCharDB
@@ -91,10 +154,14 @@ local function InitDB()
 	if type(db.overrides) ~= "table" then
 		db.overrides = {}
 	end
-	if (tonumber(db.version) or 1) < 2 then
+	local version = tonumber(db.version) or 1
+	if version < 2 then
 		Migrate(db.overrides)
 	end
-	db.version = 2
+	if version < 3 then
+		MigrateSides(db.overrides)
+	end
+	db.version = 3
 	ns.db = db
 end
 

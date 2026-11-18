@@ -2,19 +2,106 @@ local _, ns = ...
 local L = ns.L
 
 -- Settings panel: Esc > Options > AddOns > Forever Plates (or /fpl, or the minimap button).
--- A main page (preset, general) and one page per topic under it.
+--
+-- The main page holds the preset and what concerns every plate. Then one page per kind of nameplate:
+-- Враг, Союзник, Питомец союзника. Each starts with a sketch of that nameplate; clicking a part of it
+-- (or picking it in the list under the sketch) leaves on the page only that part's settings: whether to
+-- show it, its colour, size, opacity, place and its own options. The game's settings list hides and
+-- shows them by itself (shown predicates are re-checked whenever a setting changes).
 local M = ns.RegisterModule("Options", {})
 
 local mainCategory
 local category, layout -- the page being built
 local settings = {} -- every registered setting, refreshed when values change outside the panel
+local pageKind, partKey -- the part being built: its controls show only while it is selected
+local partKeys = {} -- kind -> part -> setting keys (for "reset this part")
+local partLabels = {} -- kind -> part -> label
+local partSettings = {} -- kind -> the setting of the part list
 
+local usedVariables = {}
+
+-- the settings variable for a key; a key shown in two places (the enemy's shared aura row offset)
+-- gets a second variable, both kept in sync by OnSettingsRefreshed
 local function Var(key)
-	return "FOREVERPLATES_" .. key:gsub("%.", "_"):upper()
+	local base = "FOREVERPLATES_" .. key:gsub("%.", "_"):upper()
+	local name, n = base, 1
+	while usedVariables[name] do
+		n = n + 1
+		name = base .. "_" .. n
+	end
+	usedVariables[name] = true
+	return name
 end
 
 local function Percent(value)
 	return ("%d%%"):format(math.floor(value + 0.5))
+end
+
+local function Signed(value)
+	value = math.floor(value + 0.5)
+	return value > 0 and ("+" .. value) or tostring(value)
+end
+
+------------------------------------------------------------------------
+-- parts
+------------------------------------------------------------------------
+
+function ns.GetPart(kind)
+	local parts = ns.db and ns.db.parts
+	local part = type(parts) == "table" and parts[kind]
+	if part and partLabels[kind] and partLabels[kind][part] then
+		return part
+	end
+	return "plate"
+end
+
+function ns.PartLabel(kind, part)
+	return partLabels[kind] and partLabels[kind][part] or part
+end
+
+-- select a part on a page (from the sketch): the list, the controls and the sketch follow
+function ns.SelectPart(kind, part)
+	local setting = partSettings[kind]
+	if setting and setting.SetValue then
+		setting:SetValue(part)
+	else
+		ns.db.parts = ns.db.parts or {}
+		ns.db.parts[kind] = part
+		if ns.RefreshLookPreview then
+			ns.RefreshLookPreview()
+		end
+	end
+end
+
+local function ResetPart(kind, part)
+	for _, key in ipairs(partKeys[kind] and partKeys[kind][part] or {}) do
+		ns.db.overrides[key] = nil
+	end
+	ns.Refresh()
+end
+
+-- initializer belongs to the part being built (and shows only when extra() is true as well)
+local function InPart(initializer, extra)
+	if initializer and initializer.AddShownPredicate then
+		if pageKind and partKey then
+			local kind, part = pageKind, partKey
+			initializer:AddShownPredicate(function()
+				return ns.GetPart(kind) == part
+			end)
+		end
+		if extra then
+			initializer:AddShownPredicate(function()
+				return extra() and true or false
+			end)
+		end
+	end
+	return initializer
+end
+
+local function Track(key)
+	if pageKind and partKey then
+		table.insert(partKeys[pageKind][partKey], key)
+	end
 end
 
 ------------------------------------------------------------------------
@@ -70,12 +157,9 @@ local function Description(text)
 	end
 end
 
-local function Page(name, about)
-	category, layout = Settings.RegisterVerticalLayoutSubcategory(mainCategory, name)
-	if about then
-		Description(about)
-	end
-end
+------------------------------------------------------------------------
+-- controls (each returns its initializer, already placed in the current part)
+------------------------------------------------------------------------
 
 local function Register(key, varType, label, getValue, setValue, explicitDefault)
 	local default = explicitDefault
@@ -97,10 +181,12 @@ local function Register(key, varType, label, getValue, setValue, explicitDefault
 end
 
 local function Header(text, tooltip)
-	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(text, tooltip))
+	local initializer = CreateSettingsListSectionHeaderInitializer(text, tooltip)
+	layout:AddInitializer(initializer)
+	return InPart(initializer)
 end
 
-local function Checkbox(key, label, tooltip)
+local function Checkbox(key, label, tooltip, extra)
 	local setting = Register(key, Settings.VarType.Boolean, label,
 		function()
 			return ns.Get(key) and true or false
@@ -108,11 +194,12 @@ local function Checkbox(key, label, tooltip)
 		function(value)
 			ns.Set(key, value and true or false)
 		end)
-	Settings.CreateCheckbox(category, setting, tooltip)
+	Track(key)
+	return InPart(Settings.CreateCheckbox(category, setting, tooltip), extra)
 end
 
 -- a game option the addon leaves alone until it is changed here: shows what the game has meanwhile
-local function GameCheckbox(key, label, tooltip)
+local function GameCheckbox(key, label, tooltip, extra)
 	local setting = Register(key, Settings.VarType.Boolean, label,
 		function()
 			local value = ns.Get(key)
@@ -124,13 +211,15 @@ local function GameCheckbox(key, label, tooltip)
 		function(value)
 			ns.Set(key, value and true or false)
 		end)
-	Settings.CreateCheckbox(category, setting, tooltip)
+	Track(key)
+	return InPart(Settings.CreateCheckbox(category, setting, tooltip), extra)
 end
 
-local function Slider(key, label, tooltip, minValue, maxValue, step, format)
+local function Slider(key, label, tooltip, minValue, maxValue, step, format, extra)
 	local setting = Register(key, Settings.VarType.Number, label,
 		function()
-			return ns.Get(key)
+			local value = tonumber(ns.Get(key)) or 0
+			return math.max(minValue, math.min(maxValue, value))
 		end,
 		function(value)
 			value = math.floor(value / step + 0.5) * step
@@ -143,7 +232,8 @@ local function Slider(key, label, tooltip, minValue, maxValue, step, format)
 	options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, format or function(value)
 		return tostring(math.floor(value + 0.5))
 	end)
-	Settings.CreateSlider(category, setting, options, tooltip)
+	Track(key)
+	return InPart(Settings.CreateSlider(category, setting, options, tooltip), extra)
 end
 
 -- a game number the addon leaves alone until it is changed here: shows what the game has meanwhile
@@ -161,10 +251,12 @@ local function GameSlider(key, label, tooltip, minValue, maxValue, step, format)
 		end)
 	local options = Settings.CreateSliderOptions(minValue, maxValue, step)
 	options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, format)
-	Settings.CreateSlider(category, setting, options, tooltip)
+	Track(key)
+	return InPart(Settings.CreateSlider(category, setting, options, tooltip))
 end
 
-local function Dropdown(key, label, tooltip, entries, getValue, setValue, explicitDefault)
+-- returns the initializer and the setting
+local function Dropdown(key, label, tooltip, entries, extra, getValue, setValue, explicitDefault)
 	local setting = Register(key, Settings.VarType.String, label,
 		getValue or function()
 			return ns.Get(key)
@@ -180,16 +272,124 @@ local function Dropdown(key, label, tooltip, entries, getValue, setValue, explic
 		end
 		return container:GetData()
 	end
-	Settings.CreateDropdown(category, setting, GetOptions, tooltip)
+	if not getValue then
+		Track(key)
+	end
+	return InPart(Settings.CreateDropdown(category, setting, GetOptions, tooltip), extra), setting
+end
+
+-- a colour (stored as "AARRGGBB", the way the game's colour swatch gives it)
+local function ColorSwatch(key, label, tooltip, extra)
+	if not Settings.CreateColorSwatch then
+		return nil -- an older client without colour swatches in the settings
+	end
+	local setting = Register(key, Settings.VarType.String, label,
+		function()
+			return ns.Get(key) or "ffffffff"
+		end,
+		function(value)
+			if type(value) == "string" and value:match("^%x%x%x%x%x%x%x%x$") then
+				ns.Set(key, value:lower())
+			end
+		end)
+	Track(key)
+	return InPart(Settings.CreateColorSwatch(category, setting, tooltip), extra)
+end
+
+local function Button(label, buttonText, onClick, tooltip)
+	local initializer = CreateSettingsButtonInitializer(label, buttonText, onClick, tooltip, true)
+	layout:AddInitializer(initializer)
+	return InPart(initializer)
+end
+
+-- size, opacity, offsets (and place for the small second line) of an appearance element;
+-- relative: size and opacity count from the name's (guild, pet owner)
+local function LookControls(element, relative)
+	local limits = ns.LOOK_LIMITS
+	local function LookSlider(prop, label, tooltip, format)
+		local range = limits[prop]
+		Slider(ns.LookKey(element, prop), label, tooltip, range[1], range[2], range[3], format)
+	end
+	LookSlider("scale", L.LOOK_SCALE, relative and L.LOOK_SCALE_REL_TT or L.LOOK_SCALE_TT, Percent)
+	LookSlider("alpha", L.LOOK_ALPHA, relative and L.LOOK_ALPHA_REL_TT or L.LOOK_ALPHA_TT, Percent)
+	if ns.LookHas(element, "place") then
+		Dropdown(ns.LookKey(element, "place"), L.LOOK_PLACE, L.LOOK_PLACE_TT, {
+			{ "auto", L.LOOK_PLACE_AUTO },
+			{ "above", L.LOOK_PLACE_ABOVE },
+			{ "below", L.LOOK_PLACE_BELOW },
+		})
+	end
+	LookSlider("x", L.LOOK_X, L.LOOK_X_TT, Signed)
+	LookSlider("y", L.LOOK_Y, L.LOOK_Y_TT, Signed)
+end
+
+-- colour of a name: a choice, plus a colour swatch shown only for "custom"
+local function NameColor(element, entries, tooltip)
+	local colorKey = "look." .. element .. ".color"
+	Dropdown(colorKey, L.COLOR, tooltip, entries)
+	ColorSwatch("look." .. element .. ".rgb", L.CUSTOM_COLOR, nil, function()
+		return ns.Get(colorKey) == "custom"
+	end)
 end
 
 ------------------------------------------------------------------------
 -- pages
 ------------------------------------------------------------------------
 
+local SKETCH_TEMPLATE = "ForeverPlatesPreviewTemplate"
+
+-- a page for one kind of nameplate: description, sketch, list of parts
+local function NameplatePage(kind, name, about, parts)
+	category, layout = Settings.RegisterVerticalLayoutSubcategory(mainCategory, name)
+	pageKind, partKey = nil, nil
+	partKeys[kind], partLabels[kind] = {}, {}
+	for _, part in ipairs(parts) do
+		partKeys[kind][part[1]] = {}
+		partLabels[kind][part[1]] = part[2]
+	end
+	Description(about)
+
+	if ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
+		and C_XMLUtil.GetTemplateInfo(SKETCH_TEMPLATE) and Settings.CreateElementInitializer then
+		local initializer = Settings.CreateElementInitializer(SKETCH_TEMPLATE, { name = L.SKETCH_TITLE, tooltip = L.SKETCH_TT, kind = kind })
+		local height = ns.SKETCH_HEIGHT and ns.SKETCH_HEIGHT[kind] or 160
+		initializer.GetExtent = function()
+			return height
+		end
+		layout:AddInitializer(initializer)
+	end
+
+	local _, setting = Dropdown("ui.part." .. kind, L.PART, L.PART_TT, parts, nil,
+		function()
+			return ns.GetPart(kind)
+		end,
+		function(value)
+			ns.db.parts = ns.db.parts or {}
+			ns.db.parts[kind] = value
+			if ns.RefreshLookPreview then
+				ns.RefreshLookPreview()
+			end
+		end,
+		"plate")
+	partSettings[kind] = setting
+	pageKind = kind
+end
+
+local function Part(key)
+	partKey = key
+end
+
+local function ResetButton()
+	local kind, part = pageKind, partKey
+	Button(L.RESET_PART, L.BUTTON_RESET, function()
+		ResetPart(kind, part)
+	end, L.RESET_PART_TT)
+end
+
 local function BuildMain()
 	mainCategory, layout = Settings.RegisterVerticalLayoutCategory(L.ADDON)
 	category = mainCategory
+	pageKind, partKey = nil, nil
 	Description(L.ABOUT_MAIN)
 
 	Header(L.SECTION_PROFILE)
@@ -197,7 +397,7 @@ local function BuildMain()
 	for _, preset in ipairs(ns.PresetOrder) do
 		table.insert(presetEntries, { preset, L[ns.PresetLabelKey[preset]] or preset })
 	end
-	Dropdown("profile.preset", L.PRESET, L.PRESET_TT, presetEntries,
+	Dropdown("profile.preset", L.PRESET, L.PRESET_TT, presetEntries, nil,
 		function()
 			return ns.db.preset
 		end,
@@ -205,278 +405,18 @@ local function BuildMain()
 			ns.SetPreset(value)
 		end,
 		"auto")
-	layout:AddInitializer(CreateSettingsButtonInitializer(L.RESET, L.BUTTON_RESET, function()
+	Button(L.RESET, L.BUTTON_RESET, function()
 		ns.ResetOverrides()
 		ns.Print(L.RESET_DONE, ns.GetActivePreset())
-	end, L.RESET_TT, true))
+	end, L.RESET_TT)
 
 	Header(L.SECTION_GENERAL)
 	Checkbox("ui.minimap", L.MINIMAP_BUTTON)
 	Checkbox("native.manage", L.MANAGE_NATIVE, L.MANAGE_NATIVE_TT)
-end
 
-------------------------------------------------------------------------
--- appearance: pick a part (in the sketch or the list), then its sliders
-------------------------------------------------------------------------
-
-local PREVIEW_TEMPLATE = "ForeverPlatesPreviewTemplate"
-local PREVIEW_HEIGHT = 196
-
-local function SelectedElement()
-	local element = ns.db and ns.db.lookElement
-	for _, known in ipairs(ns.LOOK_ELEMENTS) do
-		if known == element then
-			return element
-		end
-	end
-	return ns.LOOK_ELEMENTS[1]
-end
-ns.GetLookElement = SelectedElement
-
-local function BuildLook()
-	Page(L.PAGE_LOOK, L.ABOUT_LOOK)
-
-	local propSettings = {}
-	local elementSetting
-
-	-- the sketch (LookPreview.lua); clicking a part selects it below
-	if ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
-		and C_XMLUtil.GetTemplateInfo(PREVIEW_TEMPLATE) and Settings.CreateElementInitializer then
-		local initializer = Settings.CreateElementInitializer(PREVIEW_TEMPLATE, { name = L.LOOK_PREVIEW_TITLE, tooltip = L.LOOK_PREVIEW_TT })
-		initializer.GetExtent = function()
-			return PREVIEW_HEIGHT
-		end
-		layout:AddInitializer(initializer)
-	end
-
-	local function OnElementChanged()
-		for _, setting in ipairs(propSettings) do
-			setting:NotifyUpdate()
-		end
-		if ns.RefreshLookPreview then
-			ns.RefreshLookPreview()
-		end
-	end
-
-	local elementEntries = {}
-	for _, element in ipairs(ns.LOOK_ELEMENTS) do
-		table.insert(elementEntries, { element, L["LOOK_" .. element] or element })
-	end
-	elementSetting = Register("ui.lookElement", Settings.VarType.String, L.LOOK_ELEMENT,
-		SelectedElement,
-		function(value)
-			ns.db.lookElement = value
-			OnElementChanged()
-		end,
-		ns.LOOK_ELEMENTS[1])
-	local elementInit = Settings.CreateDropdown(category, elementSetting, function()
-		local container = Settings.CreateControlTextContainer()
-		for _, entry in ipairs(elementEntries) do
-			container:Add(entry[1], entry[2])
-		end
-		return container:GetData()
-	end, L.LOOK_ELEMENT_TT)
-
-	function ns.SelectLookElement(element)
-		if elementSetting.SetValue then
-			elementSetting:SetValue(element) -- the dropdown, the sliders and the sketch follow
-		else
-			ns.db.lookElement = element
-			OnElementChanged()
-		end
-	end
-
-	local function Child(initializer, prop)
-		if initializer and initializer.SetParentInitializer and elementInit then
-			initializer:SetParentInitializer(elementInit, function()
-				return ns.LookHas(SelectedElement(), prop)
-			end)
-		end
-	end
-
-	local function PropSlider(prop, label, tooltip, format)
-		local limits = ns.LOOK_LIMITS[prop]
-		local fallback = (prop == "scale" or prop == "alpha") and 100 or 0
-		local setting = Register("look.current." .. prop, Settings.VarType.Number, label,
-			function()
-				local value = tonumber(ns.Get(ns.LookKey(SelectedElement(), prop))) or fallback
-				return math.max(limits[1], math.min(limits[2], value))
-			end,
-			function(value)
-				value = math.floor(value / limits[3] + 0.5) * limits[3]
-				ns.Set(ns.LookKey(SelectedElement(), prop), value)
-			end,
-			fallback)
-		local options = Settings.CreateSliderOptions(limits[1], limits[2], limits[3])
-		options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, format)
-		Child(Settings.CreateSlider(category, setting, options, tooltip), prop)
-		table.insert(propSettings, setting)
-	end
-
-	local function Offset(value)
-		value = math.floor(value + 0.5)
-		return value > 0 and ("+" .. value) or tostring(value)
-	end
-	PropSlider("scale", L.LOOK_SCALE, L.LOOK_SCALE_TT, Percent)
-	PropSlider("alpha", L.LOOK_ALPHA, L.LOOK_ALPHA_TT, Percent)
-	PropSlider("x", L.LOOK_X, L.LOOK_X_TT, Offset)
-	PropSlider("y", L.LOOK_Y, L.LOOK_Y_TT, Offset)
-
-	local placeSetting = Register("look.current.place", Settings.VarType.String, L.LOOK_PLACE,
-		function()
-			local element = SelectedElement()
-			return ns.LookHas(element, "place") and ns.LookPlace(element) or "auto"
-		end,
-		function(value)
-			local element = SelectedElement()
-			if ns.LookHas(element, "place") then
-				ns.Set(ns.LookKey(element, "place"), value)
-			end
-		end,
-		"auto")
-	Child(Settings.CreateDropdown(category, placeSetting, function()
-		local container = Settings.CreateControlTextContainer()
-		container:Add("auto", L.LOOK_PLACE_AUTO)
-		container:Add("above", L.LOOK_PLACE_ABOVE)
-		container:Add("below", L.LOOK_PLACE_BELOW)
-		return container:GetData()
-	end, L.LOOK_PLACE_TT), "place")
-	table.insert(propSettings, placeSetting)
-
-	local reset = CreateSettingsButtonInitializer(L.LOOK_RESET, L.BUTTON_RESET, function()
-		ns.ResetLook(SelectedElement())
-	end, L.LOOK_RESET_TT, true)
-	Child(reset, "scale")
-	layout:AddInitializer(reset)
-	layout:AddInitializer(CreateSettingsButtonInitializer(L.LOOK_RESET_ALL, L.BUTTON_RESET, function()
-		ns.ResetLook(nil)
-	end, L.LOOK_RESET_ALL_TT, true))
-end
-
-local function BuildEnemies()
-	Page(L.PAGE_ENEMIES, L.ABOUT_ENEMIES)
-
-	Header(L.SECTION_HEALTH)
-	Checkbox("native.healthValue", L.HEALTH_VALUE, L.HEALTH_SHARED_TT)
-	Checkbox("native.healthPercent", L.HEALTH_PERCENT, L.HEALTH_SHARED_TT)
-	Dropdown("health.format", L.HEALTH_FORMAT, L.HEALTH_FORMAT_TT, {
-		{ "short", L.HEALTH_FORMAT_SHORT },
-		{ "full", L.HEALTH_FORMAT_FULL },
-		{ "game", L.HEALTH_FORMAT_GAME },
-	})
-	Slider("health.decimals", L.HEALTH_DECIMALS, L.HEALTH_DECIMALS_TT, 0, 2, 1)
-
-	Header(L.SECTION_ENEMY_TEXT)
-	local numberEntries = {
-		{ "none", L.NUM_NONE },
-		{ "value", L.NUM_VALUE },
-		{ "percent", L.NUM_PERCENT },
-		{ "both", L.NUM_BOTH },
-	}
-	Dropdown("enemyText.idle", L.ENEMY_IDLE, L.ENEMY_TEXT_TT, numberEntries)
-	Dropdown("enemyText.mouseover", L.ENEMY_MOUSEOVER, L.ENEMY_TEXT_TT, numberEntries)
-	Dropdown("enemyText.target", L.ENEMY_TARGET, L.ENEMY_TEXT_TT, numberEntries)
-
-	Header(L.SECTION_NAME_MARKS)
-	Checkbox("plates.enemyFullNames", L.ENEMY_FULL_NAMES, L.ENEMY_FULL_NAMES_TT)
-	Checkbox("plates.guildEnemies", L.GUILD_ENEMIES, L.GUILD_TT)
-	Checkbox("info.quest", L.QUEST_MARK, L.QUEST_MARK_TT)
-
-	Header(L.SECTION_WHICH_ENEMIES)
-	GameCheckbox("native.enemyMinions", L.ENEMY_MINIONS, L.GAME_OPTION_TT)
-	GameCheckbox("native.smallMinions", L.SMALL_MINIONS, L.GAME_OPTION_TT)
-	GameCheckbox("native.enemyMinus", L.ENEMY_MINUS, L.GAME_OPTION_TT)
-	GameCheckbox("native.smallMinus", L.SMALL_MINUS, L.GAME_OPTION_TT)
-end
-
-local function BuildAllies()
-	Page(L.PAGE_ALLIES, L.ABOUT_ALLIES)
-
-	Header(L.SECTION_ALLY_LOOK)
-	Dropdown("native.friendNamesOnly", L.FRIEND_NAMES_ONLY, L.FRIEND_NAMES_ONLY_TT, {
-		{ "never", L.NAMES_ONLY_NEVER },
-		{ "instance", L.NAMES_ONLY_INSTANCE },
-		{ "always", L.NAMES_ONLY_ALWAYS },
-	})
-	Checkbox("native.friendClassColor", L.FRIEND_CLASS_COLOR, L.FRIEND_CLASS_COLOR_TT)
-	Checkbox("plates.friendFullNames", L.FRIEND_FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
-	Checkbox("plates.guildFriends", L.GUILD_FRIENDS, L.GUILD_TT)
-	Checkbox("plates.petNamesOnly", L.PET_NAMES_ONLY, L.PET_NAMES_ONLY_TT)
-	Checkbox("plates.petClassColor", L.PET_CLASS_COLOR, L.PET_CLASS_COLOR_TT)
-	Checkbox("plates.petOwner", L.PET_OWNER, L.PET_OWNER_TT)
-
-	Header(L.SECTION_ALLY_BARS)
-	Checkbox("plates.friendHealthText", L.FRIEND_HEALTH, L.FRIEND_HEALTH_TT)
-
-	Header(L.SECTION_WHICH_ALLIES)
-	Checkbox("native.friendlyNpcs", L.FRIENDLY_NPCS)
-end
-
-local function BuildCast()
-	Page(L.PAGE_CAST, L.ABOUT_CAST)
-
-	Header(L.SECTION_CAST_GAME)
-	Checkbox("native.castName", L.CAST_NAME)
-	Checkbox("native.castIcon", L.CAST_ICON)
-	Checkbox("native.castTarget", L.CAST_TARGET)
-	Checkbox("native.castImportant", L.CAST_IMPORTANT)
-	Checkbox("native.castOnMe", L.CAST_ON_ME)
-
-	Header(L.SECTION_CAST_EXTRA)
-	Checkbox("cast.timer", L.CAST_TIMER, L.CAST_TIMER_TT)
-	Checkbox("cast.interruptReady", L.CAST_INTERRUPT, L.CAST_INTERRUPT_TT)
-end
-
-local function BuildAuras()
-	Page(L.PAGE_AURAS, L.ABOUT_AURAS)
-
-	Header(L.SECTION_MY_DEBUFFS)
-	Checkbox("auras.mine", L.MINE, L.MINE_TT)
-	Checkbox("auras.minePlayers", L.MINE_PLAYERS)
-	Slider("auras.mineMax", L.MINE_MAX, nil, 1, 12, 1)
-
-	Header(L.SECTION_PURGE)
-	Checkbox("auras.purge", L.PURGE, L.PURGE_TT)
-	Slider("auras.purgeMax", L.PURGE_MAX, nil, 1, 6, 1)
-
-	Header(L.SECTION_DISPEL)
-	Checkbox("auras.dispel", L.DISPEL, L.DISPEL_TT)
-	Slider("auras.dispelMax", L.DISPEL_MAX, nil, 1, 6, 1)
-
-	Header(L.SECTION_ICONS)
-	Checkbox("auras.timer", L.TIMER)
-
-	Header(L.SECTION_GAME_AURAS, L.SECTION_GAME_AURAS_TT)
-	Checkbox("native.npcBuffs", L.NPC_BUFFS)
-	Checkbox("native.npcDebuffs", L.NPC_DEBUFFS, L.NPC_DEBUFFS_TT)
-	Checkbox("native.npcCC", L.NPC_CC)
-	Checkbox("native.pvpBuffs", L.PVP_BUFFS)
-	Checkbox("native.pvpDebuffs", L.PVP_DEBUFFS, L.NPC_DEBUFFS_TT)
-	Checkbox("native.pvpLoC", L.PVP_LOC)
-	Checkbox("native.friendBuffs", L.FRIEND_BUFFS)
-	Checkbox("native.friendDebuffs", L.FRIEND_DEBUFFS)
-	Checkbox("native.friendLoC", L.FRIEND_LOC)
-end
-
-local function BuildVisibility()
-	Page(L.PAGE_VISIBILITY, L.ABOUT_VISIBILITY)
-
-	Header(L.SECTION_LAYOUT)
+	Header(L.SECTION_ALL_PLATES, L.SECTION_ALL_PLATES_TT)
 	Checkbox("native.alwaysShow", L.ALWAYS_SHOW)
-	if ns.ClientHasCVar("nameplateMaxDistance") then
-		GameSlider("native.maxDistance", L.MAX_DISTANCE, L.MAX_DISTANCE_TT, 10, 60, 1, function(value)
-			return L.YARDS:format(math.floor(value + 0.5))
-		end)
-	end
-	Checkbox("native.stackEnemies", L.STACK_ENEMIES, L.STACK_ENEMIES_TT)
-	Checkbox("native.stackFriends", L.STACK_FRIENDS, L.STACK_FRIENDS_TT)
 	Checkbox("native.offscreen", L.OFFSCREEN, L.OFFSCREEN_TT)
-
-	Header(L.SECTION_FADE)
-	Checkbox("fade.range", L.FADE_RANGE, L.FADE_RANGE_TT)
-	Slider("fade.rangeAlpha", L.FADE_RANGE_ALPHA, nil, 20, 90, 5, Percent)
-	Checkbox("fade.nonTarget", L.FADE_NONTARGET, L.FADE_NONTARGET_TT)
-	Slider("fade.nonTargetAlpha", L.FADE_NONTARGET_ALPHA, nil, 20, 90, 5, Percent)
 	if ns.ClientHasCVar("nameplateOccludedAlphaMult") then
 		Slider("native.losFade", L.LOS_FADE, L.LOS_FADE_TT, 0, 1, 0.05, function(value)
 			return ("%.2f"):format(value)
@@ -484,56 +424,276 @@ local function BuildVisibility()
 	end
 end
 
-local function BuildThreat()
-	Page(L.PAGE_THREAT, L.ABOUT_THREAT)
+local NUMBERS = {
+	{ "none", L.NUM_NONE },
+	{ "value", L.NUM_VALUE },
+	{ "percent", L.NUM_PERCENT },
+	{ "both", L.NUM_BOTH },
+}
 
-	Header(L.SECTION_THREAT_GAME)
+local function BuildEnemy()
+	NameplatePage("enemy", L.PAGE_ENEMY, L.ABOUT_ENEMY, {
+		{ "plate", L.PART_PLATE },
+		{ "name", L.PART_NAME },
+		{ "guild", L.PART_GUILD },
+		{ "health", L.PART_HEALTH },
+		{ "aggro", L.PART_AGGRO },
+		{ "killzone", L.PART_KILLZONE },
+		{ "cast", L.PART_CAST },
+		{ "castText", L.PART_CAST_TEXT },
+		{ "castTimer", L.PART_CAST_TIMER },
+		{ "mine", L.PART_MINE },
+		{ "purge", L.PART_PURGE },
+		{ "gameBuffs", L.PART_GAME_BUFFS },
+		{ "gameDebuffs", L.PART_GAME_DEBUFFS },
+		{ "gameCC", L.PART_GAME_CC },
+		{ "quest", L.PART_QUEST },
+	})
+
+	Part("plate")
+	if ns.ClientHasCVar("nameplateMaxDistance") then
+		GameSlider("native.maxDistance", L.MAX_DISTANCE, L.MAX_DISTANCE_TT, 10, 60, 1, function(value)
+			return L.YARDS:format(math.floor(value + 0.5))
+		end)
+	end
+	Checkbox("native.stackEnemies", L.STACK_ENEMIES, L.STACK_ENEMIES_TT)
+	Checkbox("fade.range", L.FADE_RANGE, L.FADE_RANGE_TT)
+	Slider("fade.rangeAlpha", L.FADE_RANGE_ALPHA, nil, 20, 90, 5, Percent, function()
+		return ns.Get("fade.range")
+	end)
+	Checkbox("fade.nonTarget", L.FADE_NONTARGET, L.FADE_NONTARGET_TT)
+	Slider("fade.nonTargetAlpha", L.FADE_NONTARGET_ALPHA, nil, 20, 90, 5, Percent, function()
+		return ns.Get("fade.nonTarget")
+	end)
+	GameCheckbox("native.enemyMinions", L.ENEMY_MINIONS, L.GAME_OPTION_TT)
+	GameCheckbox("native.smallMinions", L.SMALL_MINIONS, L.GAME_OPTION_TT)
+	GameCheckbox("native.enemyMinus", L.ENEMY_MINUS, L.GAME_OPTION_TT)
+	GameCheckbox("native.smallMinus", L.SMALL_MINUS, L.GAME_OPTION_TT)
+	ResetButton()
+
+	Part("name")
+	NameColor("enemyName", {
+		{ "game", L.COLOR_GAME },
+		{ "class", L.COLOR_CLASS_PLAYERS },
+		{ "white", L.COLOR_WHITE },
+		{ "custom", L.COLOR_CUSTOM },
+	}, L.ENEMY_COLOR_TT)
+	Checkbox("plates.enemyFullNames", L.FULL_NAMES, L.ENEMY_FULL_NAMES_TT)
+	LookControls("enemyName")
+	ResetButton()
+
+	Part("guild")
+	Checkbox("plates.guildEnemies", L.SHOW, L.GUILD_TT)
+	ColorSwatch("look.enemyGuild.rgb", L.COLOR)
+	LookControls("enemyGuild", true)
+	ResetButton()
+
+	Part("health")
+	Dropdown("enemyText.idle", L.ENEMY_IDLE, L.ENEMY_TEXT_TT, NUMBERS)
+	Dropdown("enemyText.mouseover", L.ENEMY_MOUSEOVER, L.ENEMY_TEXT_TT, NUMBERS)
+	Dropdown("enemyText.target", L.ENEMY_TARGET, L.ENEMY_TEXT_TT, NUMBERS)
+	Dropdown("health.format", L.HEALTH_FORMAT, L.HEALTH_FORMAT_TT, {
+		{ "short", L.HEALTH_FORMAT_SHORT },
+		{ "full", L.HEALTH_FORMAT_FULL },
+		{ "game", L.HEALTH_FORMAT_GAME },
+	})
+	Slider("health.decimals", L.HEALTH_DECIMALS, L.HEALTH_DECIMALS_TT, 0, 2, 1, nil, function()
+		return ns.Get("health.format") == "short"
+	end)
+	LookControls("enemyHealth")
+	ResetButton()
+
+	Part("aggro")
 	Dropdown("native.threat", L.THREAT, L.THREAT_TT, {
 		{ "none", L.THREAT_NONE },
 		{ "progressive", L.THREAT_PROGRESSIVE },
 		{ "flash", L.THREAT_FLASH },
 		{ "bar", L.THREAT_BAR },
 	})
-	Header(L.SECTION_THREAT_WARN)
 	Checkbox("threat.warn", L.THREAT_WARN, L.THREAT_WARN_TT)
-	Slider("threat.warnFrom", L.THREAT_WARN_FROM, L.THREAT_WARN_FROM_TT, 30, 95, 5, Percent)
-end
+	Slider("threat.warnFrom", L.THREAT_WARN_FROM, L.THREAT_WARN_FROM_TT, 30, 95, 5, Percent, function()
+		return ns.Get("threat.warn")
+	end)
+	ResetButton()
 
-local function BuildKillZone()
-	Page(L.PAGE_KILLZONE, L.ABOUT_KILLZONE)
-
-	Header(L.SECTION_KILLZONE)
+	Part("killzone")
+	local function KillZoneOn()
+		return ns.Get("killzone.enabled")
+	end
 	Checkbox("killzone.enabled", L.KZ_ENABLED, L.KZ_ENABLED_TT)
 	Dropdown("killzone.style", L.KZ_STYLE, L.KZ_STYLE_TT, {
 		{ "line", L.KZ_STYLE_LINE },
 		{ "zone", L.KZ_STYLE_ZONE },
-	})
-	Checkbox("killzone.targetOnly", L.KZ_TARGET_ONLY, L.KZ_TARGET_ONLY_TT)
-	Checkbox("killzone.combatOnly", L.KZ_COMBAT_ONLY, L.KZ_COMBAT_ONLY_TT)
+	}, KillZoneOn)
+	Checkbox("killzone.targetOnly", L.KZ_TARGET_ONLY, L.KZ_TARGET_ONLY_TT, KillZoneOn)
+	Checkbox("killzone.combatOnly", L.KZ_COMBAT_ONLY, L.KZ_COMBAT_ONLY_TT, KillZoneOn)
 	Dropdown("killzone.mode", L.KZ_MODE, L.KZ_MODE_TT, {
 		{ "spell", L.KZ_MODE_SPELL },
 		{ "value", L.KZ_MODE_VALUE },
 		{ "percent", L.KZ_MODE_PERCENT },
-	})
+	}, KillZoneOn)
 	Slider("killzone.spellBonus", L.KZ_BONUS, L.KZ_BONUS_TT, -50, 100, 5, function(value)
 		return ("%+d%%"):format(math.floor(value + 0.5))
+	end, function()
+		return KillZoneOn() and ns.Get("killzone.mode") == "spell"
 	end)
-	Slider("killzone.value", L.KZ_VALUE, L.KZ_VALUE_TT, 10, 5000, 10)
-	Slider("killzone.percent", L.KZ_PERCENT, nil, 1, 50, 1, Percent)
-	Checkbox("killzone.crit", L.KZ_CRIT, L.KZ_CRIT_TT)
-	Slider("killzone.critMult", L.KZ_CRIT_MULT, L.KZ_CRIT_MULT_TT, 120, 300, 5, Percent)
+	Slider("killzone.value", L.KZ_VALUE, L.KZ_VALUE_TT, 10, 5000, 10, nil, function()
+		return KillZoneOn() and ns.Get("killzone.mode") ~= "percent"
+	end)
+	Slider("killzone.percent", L.KZ_PERCENT, nil, 1, 50, 1, Percent, function()
+		return KillZoneOn() and ns.Get("killzone.mode") == "percent"
+	end)
+	Checkbox("killzone.crit", L.KZ_CRIT, L.KZ_CRIT_TT, KillZoneOn)
+	Slider("killzone.critMult", L.KZ_CRIT_MULT, L.KZ_CRIT_MULT_TT, 120, 300, 5, Percent, function()
+		return KillZoneOn() and ns.Get("killzone.crit")
+	end)
+	ResetButton()
+
+	Part("cast")
+	Checkbox("native.castIcon", L.CAST_ICON)
+	Checkbox("native.castTarget", L.CAST_TARGET)
+	Checkbox("native.castImportant", L.CAST_IMPORTANT)
+	Checkbox("native.castOnMe", L.CAST_ON_ME)
+	Checkbox("cast.interruptReady", L.CAST_INTERRUPT, L.CAST_INTERRUPT_TT)
+	ResetButton()
+
+	Part("castText")
+	Checkbox("native.castName", L.SHOW, L.CAST_NAME_TT)
+	LookControls("castText")
+	ResetButton()
+
+	Part("castTimer")
+	Checkbox("cast.timer", L.SHOW, L.CAST_TIMER_TT)
+	LookControls("castTimer")
+	ResetButton()
+
+	Part("mine")
+	Checkbox("auras.mine", L.SHOW, L.MINE_TT)
+	Checkbox("auras.minePlayers", L.MINE_PLAYERS)
+	Slider("auras.mineMax", L.HOW_MANY, nil, 1, 12, 1)
+	Checkbox("auras.mineTimer", L.TIMER)
+	LookControls("mine")
+	ResetButton()
+
+	Part("purge")
+	Checkbox("auras.purge", L.SHOW, L.PURGE_TT)
+	Slider("auras.purgeMax", L.HOW_MANY, nil, 1, 6, 1)
+	Checkbox("auras.purgeTimer", L.TIMER)
+	LookControls("purge")
+	ResetButton()
+
+	Part("gameBuffs")
+	Checkbox("native.npcBuffs", L.ON_MOBS)
+	Checkbox("native.pvpBuffs", L.ON_ENEMY_PLAYERS)
+	LookControls("gameBuffs")
+	ResetButton()
+
+	Part("gameDebuffs")
+	Checkbox("native.npcDebuffs", L.ON_MOBS, L.NPC_DEBUFFS_TT)
+	Checkbox("native.pvpDebuffs", L.ON_ENEMY_PLAYERS, L.NPC_DEBUFFS_TT)
+	LookControls("gameDebuffs")
+	ResetButton()
+
+	Part("gameCC")
+	Checkbox("native.npcCC", L.CC_ON_MOBS)
+	Checkbox("native.pvpLoC", L.LOC_ON_ENEMY_PLAYERS)
+	LookControls("gameCC")
+	ResetButton()
+
+	Part("quest")
+	Checkbox("info.quest", L.SHOW, L.QUEST_MARK_TT)
+	LookControls("quest")
+	ResetButton()
+end
+
+local function BuildAlly()
+	NameplatePage("ally", L.PAGE_ALLY, L.ABOUT_ALLY, {
+		{ "plate", L.PART_PLATE },
+		{ "name", L.PART_NAME },
+		{ "guild", L.PART_GUILD },
+		{ "health", L.PART_HEALTH },
+		{ "dispel", L.PART_DISPEL },
+		{ "friendGame", L.PART_FRIEND_GAME },
+	})
+
+	Part("plate")
+	Dropdown("native.friendNamesOnly", L.FRIEND_NAMES_ONLY, L.FRIEND_NAMES_ONLY_TT, {
+		{ "never", L.NAMES_ONLY_NEVER },
+		{ "instance", L.NAMES_ONLY_INSTANCE },
+		{ "always", L.NAMES_ONLY_ALWAYS },
+	})
+	Checkbox("native.stackFriends", L.STACK_FRIENDS, L.STACK_FRIENDS_TT)
+	Checkbox("native.friendlyNpcs", L.FRIENDLY_NPCS)
+	ResetButton()
+
+	Part("name")
+	NameColor("friendName", {
+		{ "class", L.COLOR_CLASS },
+		{ "white", L.COLOR_WHITE },
+		{ "custom", L.COLOR_CUSTOM },
+	}, L.FRIEND_COLOR_TT)
+	Checkbox("plates.friendFullNames", L.FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
+	LookControls("friendName")
+	ResetButton()
+
+	Part("guild")
+	Checkbox("plates.guildFriends", L.SHOW, L.GUILD_TT)
+	ColorSwatch("look.friendGuild.rgb", L.COLOR)
+	LookControls("friendGuild", true)
+	ResetButton()
+
+	Part("health")
+	Dropdown("plates.friendHealth", L.FRIEND_HEALTH_MODE, L.FRIEND_HEALTH_MODE_TT, NUMBERS)
+	LookControls("friendHealth")
+	ResetButton()
+
+	Part("dispel")
+	Checkbox("auras.dispel", L.SHOW, L.DISPEL_TT)
+	Slider("auras.dispelMax", L.HOW_MANY, nil, 1, 6, 1)
+	Checkbox("auras.dispelTimer", L.TIMER)
+	LookControls("dispel")
+	ResetButton()
+
+	Part("friendGame")
+	Checkbox("native.friendBuffs", L.FRIEND_BUFFS)
+	Checkbox("native.friendDebuffs", L.FRIEND_DEBUFFS)
+	Checkbox("native.friendLoC", L.FRIEND_LOC)
+	LookControls("friendGame")
+	ResetButton()
+end
+
+local function BuildPet()
+	NameplatePage("pet", L.PAGE_PET, L.ABOUT_PET, {
+		{ "plate", L.PART_PLATE },
+		{ "name", L.PART_NAME },
+		{ "owner", L.PART_OWNER },
+	})
+
+	Part("plate")
+	Checkbox("plates.petNamesOnly", L.PET_NAMES_ONLY, L.PET_NAMES_ONLY_TT)
+	ResetButton()
+
+	Part("name")
+	NameColor("petName", {
+		{ "class", L.COLOR_OWNER_CLASS },
+		{ "white", L.COLOR_WHITE },
+		{ "custom", L.COLOR_CUSTOM },
+	}, L.PET_COLOR_TT)
+	LookControls("petName")
+	ResetButton()
+
+	Part("owner")
+	Checkbox("plates.petOwner", L.SHOW, L.PET_OWNER_TT)
+	LookControls("petOwner", true)
+	ResetButton()
 end
 
 local function Build()
 	BuildMain()
-	BuildLook()
-	BuildEnemies()
-	BuildAllies()
-	BuildCast()
-	BuildAuras()
-	BuildVisibility()
-	BuildThreat()
-	BuildKillZone()
+	BuildEnemy()
+	BuildAlly()
+	BuildPet()
+	pageKind, partKey = nil, nil
 	Settings.RegisterAddOnCategory(mainCategory)
 end
 
@@ -544,11 +704,20 @@ function M:OnLogin()
 	end
 end
 
--- keep the panel in sync after slash commands, preset switches and resets
+-- keep the panel in sync after slash commands, preset switches, resets and settings shown twice.
+-- Only settings whose value changed are told (each one makes the game re-check the whole page).
+local lastValues = {}
 function ns.OnSettingsRefreshed()
 	for _, setting in ipairs(settings) do
-		if setting.NotifyUpdate then
-			setting:NotifyUpdate()
+		local ok, value = true, nil
+		if setting.GetValue then
+			ok, value = pcall(setting.GetValue, setting)
+		end
+		if not ok or value == nil or lastValues[setting] ~= value then
+			lastValues[setting] = value
+			if setting.NotifyUpdate then
+				setting:NotifyUpdate()
+			end
 		end
 	end
 	if ns.RefreshLookPreview then

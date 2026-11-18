@@ -183,7 +183,8 @@ local function ApplyAll()
 	local namesOnly = ns.Get("native.friendNamesOnly")
 	local inInstance = IsInInstance and IsInInstance() and true or false
 	SetBool("nameplateShowOnlyNameForFriendlyPlayerUnits", namesOnly == "always" or (namesOnly == "instance" and inInstance))
-	SetBool("nameplateUseClassColorForFriendlyPlayerUnitNames", ns.Get("native.friendClassColor"))
+	-- ally names in class colour: the game's own option, so it also works in dungeons and raids
+	SetBool("nameplateUseClassColorForFriendlyPlayerUnitNames", ns.LookColorMode("friendName") == "class")
 
 	-- Allies' pets: instead of the game's big floating labels, nameplates that the addon turns into a
 	-- white name (see HealthText). In dungeons and raids the addon can't touch ally plates, so pets get
@@ -202,7 +203,7 @@ local function ApplyAll()
 end
 
 function M:Apply(key)
-	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" then
+	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" and key ~= "look.friendName.color" then
 		return
 	end
 	if not ns.Get("native.manage") then

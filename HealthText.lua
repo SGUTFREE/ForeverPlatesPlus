@@ -58,14 +58,15 @@ local function SetTextShown(text, shown, alpha)
 	end
 end
 
--- mode: "none" | "value" | "percent" | "both"; look = false gives the game's size and opacity back
+-- mode: "none" | "value" | "percent" | "both"; look: appearance element ("enemyHealth" / "friendHealth"),
+-- false gives the game's size and opacity back
 local function ShowNumbers(unitFrame, mode, look)
 	local healthBar = unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
 	if not healthBar then
 		return
 	end
-	local alpha = look == false and 1 or ns.LookAlpha("health")
-	local scale = look == false and 1 or ns.LookScale("health")
+	local alpha = look and ns.LookAlpha(look) or 1
+	local scale = look and ns.LookScale(look) or 1
 	for _, text in ipairs({ healthBar.RightText, healthBar.LeftText, healthBar.TextString or healthBar.Text }) do
 		ns.ApplyTextScale(text, scale)
 	end
@@ -88,10 +89,10 @@ local function ShowNumbers(unitFrame, mode, look)
 end
 
 -- the numbers hang on one text pinned to the bar's right edge (the percent); the others follow it
-local function PlaceNumbers(unitFrame)
+local function PlaceNumbers(unitFrame, look)
 	local healthBar = unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
-	if healthBar then
-		ns.PlaceRegion(healthBar.LeftText, ns.LookOffset("health"))
+	if healthBar and look then
+		ns.PlaceRegion(healthBar.LeftText, ns.LookOffset(look))
 	end
 end
 
@@ -320,6 +321,7 @@ end
 
 local barOwner = setmetatable({}, { __mode = "k" }) -- health bar -> its unit frame
 local modeByFrame = setmetatable({}, { __mode = "k" }) -- unit frame -> numbers mode in effect
+local lookByFrame = setmetatable({}, { __mode = "k" }) -- unit frame -> appearance element of its numbers
 
 local function OnGameHealthText(healthBar, _, value)
 	RenderHealth(healthBar, value)
@@ -327,7 +329,7 @@ local function OnGameHealthText(healthBar, _, value)
 	local unitFrame = barOwner[healthBar]
 	local mode = unitFrame and modeByFrame[unitFrame]
 	if mode then
-		ShowNumbers(unitFrame, mode)
+		ShowNumbers(unitFrame, mode, lookByFrame[unitFrame])
 	end
 end
 
@@ -471,7 +473,15 @@ end
 -- { color = { r, g, b }, owner = name|nil } for a pet shown as a name only
 local function PetInfo(unit)
 	local class, owner = PetOwner(unit)
-	local color = ns.Get("plates.petClassColor") and ClassColor(class) or WHITE
+	local mode = ns.LookColorMode("petName")
+	local color
+	if mode == "custom" then
+		color = { ns.LookRGB("petName") }
+	elseif mode == "class" then
+		color = ClassColor(class) or WHITE
+	else
+		color = WHITE
+	end
 	return { color = color, owner = owner }
 end
 
@@ -481,18 +491,14 @@ local function IsAllyPet(unit)
 		or ns.SafeBool(UnitIsMinion and UnitIsMinion(unit)) == true
 end
 
--- info: { color, owner } for the name, or nil to show the plate normally again
+-- info: { color, owner } for the name, or nil to show the plate normally again (the colour is set with the name's)
 local function SetPetNameOnly(unitFrame, info)
 	if info then
-		local color = info.color
 		for _, key in ipairs(PET_HIDDEN_PARTS) do
 			local part = unitFrame[key]
 			if type(part) == "table" and part.SetAlpha then
 				part:SetAlpha(0)
 			end
-		end
-		if unitFrame.name then
-			unitFrame.name:SetVertexColor(color[1], color[2], color[3])
 		end
 		petMode[unitFrame] = info
 	elseif petMode[unitFrame] then
@@ -502,18 +508,78 @@ local function SetPetNameOnly(unitFrame, info)
 				part:SetAlpha(1)
 			end
 		end
-		petMode[unitFrame] = nil -- the name colour comes back with the game's next name update
+		petMode[unitFrame] = nil
 	end
 end
 
--- the game recolours names on its own updates: keep our pet name colour
+------------------------------------------------------------------------
+-- name colour
+------------------------------------------------------------------------
+
+-- The game colours a name on each of its name updates; a colour chosen here is put back on top right
+-- after. The game's own colour is remembered (never compared: it may be secret) to give it back.
+local nameColor = setmetatable({}, { __mode = "k" }) -- unit frame -> { r, g, b } kept on its name
+local gameNameColor = setmetatable({}, { __mode = "k" }) -- unit frame -> the game's last { r, g, b }
+
+local function RememberGameColor(unitFrame)
+	local name = unitFrame.name
+	if name and name.GetVertexColor then
+		local ok, r, g, b = pcall(name.GetVertexColor, name)
+		if ok and r ~= nil then
+			gameNameColor[unitFrame] = { r, g, b }
+		end
+	end
+end
+
+-- color: { r, g, b }, or nil for the game's colour
+local function SetNameColor(unitFrame, color)
+	local name = unitFrame.name
+	if not name then
+		return
+	end
+	if color then
+		if not nameColor[unitFrame] then
+			RememberGameColor(unitFrame)
+		end
+		nameColor[unitFrame] = color
+		name:SetVertexColor(color[1], color[2], color[3])
+	elseif nameColor[unitFrame] then
+		nameColor[unitFrame] = nil
+		local game = gameNameColor[unitFrame]
+		if game then
+			name:SetVertexColor(game[1], game[2], game[3])
+		end
+	end
+end
+
 if type(CompactUnitFrame_UpdateName) == "function" then
 	hooksecurefunc("CompactUnitFrame_UpdateName", function(frame)
-		local info = petMode[frame]
-		if info and frame.name then
-			frame.name:SetVertexColor(info.color[1], info.color[2], info.color[3])
+		local color = nameColor[frame]
+		if color and frame.name then
+			RememberGameColor(frame)
+			frame.name:SetVertexColor(color[1], color[2], color[3])
 		end
 	end)
+end
+
+-- the colour a name should have, nil = the game's. Ally "class" is the game's own option (NativeOptions),
+-- so it works in dungeons too; enemy "class" colours players only.
+local function NameColor(unit, element, pet)
+	if pet then
+		return pet.color
+	end
+	local mode = ns.LookColorMode(element)
+	if mode == "white" then
+		return WHITE
+	elseif mode == "custom" then
+		return { ns.LookRGB(element) }
+	elseif mode == "class" and element == "enemyName" and ns.SafeBool(UnitIsPlayer(unit)) then
+		local _, class = UnitClass(unit)
+		if class and not ns.IsSecret(class) then
+			return ClassColor(class)
+		end
+	end
+	return nil
 end
 
 -- alpha: 0..1, or nil for the game's own (the game never changes the name's alpha itself)
@@ -568,7 +634,6 @@ end
 -- name (the extra aura row then moves up, see Auras).
 local SUBTITLE_SIZE = 0.85 -- of the name's font size
 local SUBTITLE_GAP = 1
-local GUILD_COLOR = { 0.85, 0.85, 0.85 }
 local subtitles = setmetatable({}, { __mode = "k" }) -- unit frame -> our font string
 local subtitleAbove = setmetatable({}, { __mode = "k" }) -- unit frame -> height of a subtitle shown above the name
 
@@ -576,7 +641,7 @@ local function ShowsOnlyName(unitFrame)
 	return unitFrame.showOnlyName == true or petMode[unitFrame] ~= nil
 end
 
--- element: "guild" or "petOwner" (size, opacity and place from the appearance page, relative to the name)
+-- element: "enemyGuild", "friendGuild" or "petOwner" (size, opacity and place relative to the name)
 local function SetSubtitle(unitFrame, text, color, element)
 	local line = subtitles[unitFrame]
 	local name = unitFrame.name
@@ -644,6 +709,7 @@ function ns.GetSubtitleHeight(unitFrame)
 	return subtitleAbove[unitFrame] or 0
 end
 
+-- "<Guild>" of a player, or nil
 local function GuildTag(unit, kind)
 	local wanted = (kind == "friendlyPlayer" and ns.Get("plates.guildFriends"))
 		or (kind == "enemyPlayer" and ns.Get("plates.guildEnemies"))
@@ -668,7 +734,7 @@ end
 local function NumbersMode(unit, unitFrame)
 	local kind = ns.GetUnitKind(unit)
 	if kind == "friendlyPlayer" or kind == "friendlyNpc" then
-		return ns.Get("plates.friendHealthText") and "both" or "none", true
+		return ns.Get("plates.friendHealth") or "none", true
 	end
 	if rawequal(unitFrame, PlateFrame("target")) then
 		return ns.Get("enemyText.target"), false
@@ -681,11 +747,14 @@ end
 
 local function Update(unit, unitFrame)
 	local mode, isFriendly = NumbersMode(unit, unitFrame)
+	local numbersLook = isFriendly and "friendHealth" or "enemyHealth"
 	modeByFrame[unitFrame] = mode
-	ShowNumbers(unitFrame, mode)
-	PlaceNumbers(unitFrame)
+	lookByFrame[unitFrame] = numbersLook
+	ShowNumbers(unitFrame, mode, numbersLook)
+	PlaceNumbers(unitFrame, numbersLook)
 
-	local nameElement = isFriendly and "friendName" or "enemyName"
+	local isPet = isFriendly and ns.Get("plates.petNamesOnly") and IsAllyPet(unit)
+	local nameElement = (isPet and "petName") or (isFriendly and "friendName") or "enemyName"
 	local wantFull
 	if isFriendly then
 		wantFull = ns.Get("plates.friendFullNames")
@@ -694,9 +763,9 @@ local function Update(unit, unitFrame)
 	end
 	SetNameLayout(unitFrame, wantFull and true or false, ns.LookOffset(nameElement))
 
-	local isPet = isFriendly and ns.Get("plates.petNamesOnly") and IsAllyPet(unit)
 	local pet = isPet and PetInfo(unit) or nil
 	SetPetNameOnly(unitFrame, pet)
+	SetNameColor(unitFrame, NameColor(unit, nameElement, pet))
 
 	local alpha = ns.LookAlpha(nameElement)
 	SetNameAlpha(unitFrame, alpha ~= 1 and alpha or nil)
@@ -707,7 +776,9 @@ local function Update(unit, unitFrame)
 	if pet and pet.owner and ns.Get("plates.petOwner") then
 		SetSubtitle(unitFrame, pet.owner, pet.color, "petOwner")
 	else
-		SetSubtitle(unitFrame, GuildTag(unit, ns.GetUnitKind(unit)), GUILD_COLOR, "guild")
+		local kind = ns.GetUnitKind(unit)
+		local guildLook = kind == "enemyPlayer" and "enemyGuild" or "friendGuild"
+		SetSubtitle(unitFrame, GuildTag(unit, kind), { ns.LookRGB(guildLook) }, guildLook)
 	end
 	-- the aura row above the name follows the name's size and place
 	if ns.ReanchorAuras then
@@ -725,7 +796,7 @@ end
 -- the game laid the plate out again: name, numbers and the second line back where we want them
 function M:OnPlateLayout(_, unitFrame)
 	OnGameLayout(unitFrame)
-	PlaceNumbers(unitFrame)
+	PlaceNumbers(unitFrame, lookByFrame[unitFrame])
 	if subtitles[unitFrame] and subtitles[unitFrame]:IsShown() then
 		Refresh(unitFrame) -- name only <-> with a bar: the line may change sides
 	end
@@ -862,8 +933,8 @@ function M:OnPlateAdded(unit, unitFrame)
 	frameUnit[unitFrame] = unit
 	HookHealthBar(unitFrame)
 	Update(unit, unitFrame)
-	if ns.Get("plates.petClassColor") and ns.GetUnitKind(unit) == "friendlyPlayer" then
-		QueuePetRefresh() -- maybe the owner of a pet shown in white
+	if ns.GetUnitKind(unit) == "friendlyPlayer" then
+		QueuePetRefresh() -- maybe the owner of a pet shown without one so far
 	end
 end
 
@@ -875,6 +946,8 @@ function M:OnPlateRemoved(_, unitFrame)
 	SetNameAlpha(unitFrame, nil)
 	SetNameScale(unitFrame, nil)
 	SetPetNameOnly(unitFrame, nil)
+	SetNameColor(unitFrame, nil)
+	lookByFrame[unitFrame] = nil
 	SetSubtitle(unitFrame, nil)
 	ShowNumbers(unitFrame, "both", false)
 	hidden[unitFrame] = nil

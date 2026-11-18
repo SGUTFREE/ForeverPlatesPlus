@@ -465,13 +465,21 @@ function Settings.RegisterProxySetting(cat, variable, varType, name, default, ge
 	assert(not SETTINGS[variable], "duplicate setting " .. variable)
 	local s = { variable = variable, varType = varType, default = default, get = get, set = set, notified = 0, page = cat.name }
 	function s:NotifyUpdate() self.notified = self.notified + 1; self.get() end
+	function s:GetValue() return self.get() end
 	-- like the game's Setting:SetValue: the setter only runs when the value changes
 	function s:SetValue(v) if self.get() ~= v then self.set(v) end end
 	SETTINGS[variable] = s
 	return s
 end
+-- the shown predicates the game's settings list checks (ShouldShow)
+local function AddShown(init)
+	init.shown = {}
+	function init:AddShownPredicate(fn) table.insert(self.shown, fn) end
+	function init:ShouldShow() for _, fn in ipairs(self.shown) do if not fn() then return false end end; return true end
+end
 local function NewInitializer(s)
 	local init = { setting = s }
+	AddShown(init)
 	function init:SetParentInitializer(parent, predicate) self.parent = parent; self.predicate = predicate end
 	s.init = init
 	return init
@@ -479,6 +487,7 @@ end
 function Settings.CreateCheckbox(cat, s) s.control = "checkbox"; return NewInitializer(s) end
 function Settings.CreateSlider(cat, s, options) s.control = "slider"; s.options = options; return NewInitializer(s) end
 function Settings.CreateDropdown(cat, s, getOptions) s.control = "dropdown"; s.getOptions = getOptions; return NewInitializer(s) end
+function Settings.CreateColorSwatch(cat, s) s.control = "color"; return NewInitializer(s) end
 function Settings.CreateSliderOptions(min, max, step)
 	return { min = min, max = max, step = step, SetLabelFormatter = function(self, t, f) self.formatter = f end }
 end
@@ -491,7 +500,11 @@ end
 function Settings.RegisterAddOnCategory(cat) SETTINGS.registered = cat end
 function Settings.OpenToCategory(id) SETTINGS.opened = id end
 MinimalSliderWithSteppersMixin = { Label = { Right = 1 } }
-function CreateSettingsListSectionHeaderInitializer(t, tooltip) return { header = t, tooltip = tooltip } end
+function CreateSettingsListSectionHeaderInitializer(t, tooltip)
+	local init = { header = t, tooltip = tooltip }
+	AddShown(init)
+	return init
+end
 CreateFromMixins = CreateFromMixins or function(...)
 	local t = {}
 	for _, m in ipairs({ ... }) do for k, v in pairs(m) do t[k] = v end end
@@ -509,7 +522,13 @@ if DESCRIPTIONS_AVAILABLE then
 		return getTemplateInfo(name)
 	end
 end
-function CreateSettingsButtonInitializer(name, text, click, tt, tags) assert(tags ~= nil); return { button = name, click = click } end
+function CreateSettingsButtonInitializer(name, text, click, tt, tags)
+	assert(tags ~= nil)
+	local init = { button = name, click = click, shown = {} }
+	function init:AddShownPredicate(fn) table.insert(self.shown, fn) end
+	return init
+end
+SETTINGS.buttons = {}
 
 -- event helper --------------------------------------------------------------
 function FireEvent(event, ...)

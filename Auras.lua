@@ -11,12 +11,13 @@ local HAS_CONTAINERS = C_XMLUtil and C_XMLUtil.GetTemplateInfo
 -- size = icon pixels at 100% on the appearance page (the element has the group's name)
 local GROUPS = {
 	-- buffs on enemies that you can remove (Dispel Magic, Purge, Spellsteal...), with a blue frame
-	purge = { filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", size = 20, maxKey = "auras.purgeMax", order = 1,
-		frame = { 0.25, 0.55, 1, 1 } },
+	purge = { filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", size = 20, maxKey = "auras.purgeMax", timerKey = "auras.purgeTimer",
+		order = 1, frame = { 0.25, 0.55, 1, 1 } },
 	-- all your debuffs on enemies (DoTs, slows, fears...)
-	mine = { filter = "HARMFUL|PLAYER", size = 22, maxKey = "auras.mineMax", order = 2 },
+	mine = { filter = "HARMFUL|PLAYER", size = 22, maxKey = "auras.mineMax", timerKey = "auras.mineTimer", order = 2 },
 	-- debuffs you can dispel, on allies
-	dispel = { filter = "HARMFUL|RAID_PLAYER_DISPELLABLE", size = 16, maxKey = "auras.dispelMax", order = 3 },
+	dispel = { filter = "HARMFUL|RAID_PLAYER_DISPELLABLE", size = 16, maxKey = "auras.dispelMax", timerKey = "auras.dispelTimer",
+		order = 3 },
 }
 
 -- icon size in pixels for a group
@@ -24,14 +25,16 @@ local function GroupSize(groupKey)
 	return math.floor(GROUPS[groupKey].size * ns.LookScale(groupKey) + 0.5)
 end
 
--- the game's own aura lists on the plate (appearance elements gameBuffs, gameDebuffs, gameCC).
--- The game sets the loss-of-control frame's scale itself, so only its opacity and place are ours.
+-- the game's own aura lists on the plate: on enemies each list has its appearance element, on allies
+-- one element (friendGame) covers them all. The game sets the loss-of-control frame's scale itself,
+-- so only its opacity and place are ours.
 local GAME_LISTS = {
 	{ element = "gameBuffs", key = "BuffListFrame" },           -- left of the bar
 	{ element = "gameDebuffs", key = "DebuffListFrame" },       -- above the name
 	{ element = "gameCC", key = "CrowdControlListFrame" },      -- right of the bar
 	{ element = "gameCC", key = "LossOfControlFrame", noScale = true },
 }
+local plateIsFriend = setmetatable({}, { __mode = "k" }) -- unit frame -> true on allies
 local GROUP_ORDER = { "purge", "mine", "dispel" }
 local FRAME_COLOR = { 0, 0, 0, 0.9 }
 
@@ -65,7 +68,7 @@ end
 -- buttons
 ------------------------------------------------------------------------
 
-local function StyleButton(button, size)
+local function StyleButton(button, size, timerOn)
 	button:SetSize(size, size)
 	local timer = button.fpTimer
 	if timer then
@@ -75,7 +78,7 @@ local function StyleButton(button, size)
 	if count then
 		count:SetTextHeight(math.max(7, math.floor(size * 0.42 + 0.5)))
 	end
-	if ns.Get("auras.timer") and button.fpTimer then
+	if timerOn and button.fpTimer then
 		button:SetDurationText(button.fpTimer, { textFormatter = GetFormatter() })
 		button.fpTimer:Show()
 	else
@@ -138,7 +141,7 @@ local function InitButton(container, groupKey, button)
 	button.fpTimer = timer
 
 	table.insert(container.fpButtons[groupKey], button)
-	StyleButton(button, GroupSize(groupKey))
+	StyleButton(button, GroupSize(groupKey), ns.Get(GROUPS[groupKey].timerKey))
 	button:SetAlpha(ns.LookAlpha(groupKey))
 end
 
@@ -210,7 +213,8 @@ local function AnchorContainer(container, unitFrame)
 	end
 	-- a guild line above the name (HealthText) takes room as well
 	offset = offset + (ns.GetSubtitleHeight and ns.GetSubtitleHeight(unitFrame) or 0)
-	local dx, dy = ns.LookOffset("mine") -- shared by the three rows
+	-- the enemy's two rows share one offset; the ally row has its own
+	local dx, dy = ns.LookOffset(plateIsFriend[unitFrame] and "dispel" or "mine")
 	container:ClearAllPoints()
 	container:SetPoint("BOTTOMLEFT", unitFrame.HealthBarsContainer, "TOPLEFT", dx, offset + dy)
 end
@@ -224,14 +228,15 @@ local function ApplyGameLook(unitFrame)
 	for _, list in ipairs(GAME_LISTS) do
 		local frame = auras[list.key]
 		if type(frame) == "table" and frame.SetAlpha then
-			local scale = ns.LookScale(list.element)
-			local dx, dy = ns.LookOffset(list.element)
+			local element = plateIsFriend[unitFrame] and "friendGame" or list.element
+			local scale = ns.LookScale(element)
+			local dx, dy = ns.LookOffset(element)
 			if not list.noScale then
 				ns.ApplyScale(frame, scale)
 			else
 				scale = 1
 			end
-			ns.ApplyAlpha(frame, ns.LookAlpha(list.element))
+			ns.ApplyAlpha(frame, ns.LookAlpha(element))
 			-- a scaled frame's offsets count in its own scale: divide, so a pixel stays a pixel
 			ns.PlaceRegion(frame, dx / scale, dy / scale)
 		end
@@ -262,6 +267,8 @@ local function Disable(container)
 end
 
 function M:OnPlateAdded(unit, unitFrame)
+	local kind = ns.GetUnitKind(unit)
+	plateIsFriend[unitFrame] = (kind == "friendlyPlayer" or kind == "friendlyNpc") or nil
 	ApplyGameLook(unitFrame)
 	if not HAS_CONTAINERS or not unitFrame.HealthBarsContainer then
 		return
@@ -319,9 +326,9 @@ function M:Apply(key)
 			local info = GROUPS[groupKey]
 			container:SetAuraGroupMaxFrameCount(groupKey, ns.Get(info.maxKey))
 			container:SetAuraGroupLayout(groupKey, GroupLayout(groupKey))
-			local size, alpha = GroupSize(groupKey), ns.LookAlpha(groupKey)
+			local size, alpha, timerOn = GroupSize(groupKey), ns.LookAlpha(groupKey), ns.Get(info.timerKey)
 			for _, button in ipairs(container.fpButtons[groupKey]) do
-				StyleButton(button, size)
+				StyleButton(button, size, timerOn)
 				button:SetAlpha(alpha)
 			end
 		end
