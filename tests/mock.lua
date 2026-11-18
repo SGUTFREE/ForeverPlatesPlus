@@ -1,0 +1,399 @@
+-- Minimal WoW API mock for exercising Forever Plates outside the game.
+-- Only what the addon touches; every frame method not listed is a recorded no-op.
+
+LOG = {}
+local function log(...) table.insert(LOG, table.concat({ ... }, " ")) end
+
+ERRORS = {}
+function geterrorhandler() return function(msg) table.insert(ERRORS, tostring(msg)) end end
+PRINTS = {}
+print = function(...)
+	local parts = {}
+	for i = 1, select("#", ...) do parts[#parts + 1] = tostring(select(i, ...)) end
+	table.insert(PRINTS, table.concat(parts, " "))
+end
+
+LOCALE = LOCALE or "ruRU"
+function GetLocale() return LOCALE end
+function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+function strsplit(sep, s, n)
+	local out, start = {}, 1
+	while true do
+		if n and #out == n - 1 then out[#out + 1] = s:sub(start); break end
+		local i = s:find(sep, start, true)
+		if not i then out[#out + 1] = s:sub(start); break end
+		out[#out + 1] = s:sub(start, i - 1)
+		start = i + #sep
+	end
+	return unpack(out)
+end
+function wipe(t) for k in pairs(t) do t[k] = nil end return t end
+SlashCmdList = {}
+
+-- secrets ---------------------------------------------------------------
+local SECRET = setmetatable({}, { __tostring = function() return "<secret>" end,
+	__lt = function() error("attempt to compare a secret value") end,
+	__le = function() error("attempt to compare a secret value") end,
+	__eq = function() error("attempt to compare a secret value") end })
+SECRET_VALUE = SECRET
+function issecretvalue(v) return v == nil and false or rawequal(v, SECRET) end
+
+-- combat / timers -------------------------------------------------------
+IN_COMBAT = false
+IN_INSTANCE = false
+function IsInInstance() return IN_INSTANCE, IN_INSTANCE and "party" or "none" end
+function InCombatLockdown() return IN_COMBAT end
+C_Timer = { queue = {} }
+function C_Timer.After(_, fn) table.insert(C_Timer.queue, fn) end
+function RunTimers()
+	local q = C_Timer.queue
+	C_Timer.queue = {}
+	for _, fn in ipairs(q) do fn() end
+end
+
+-- enums -----------------------------------------------------------------
+Enum = {
+	NamePlateInfoDisplay = { None = 0, CurrentHealthPercent = 1, CurrentHealthValue = 2, RarityIcon = 3 },
+	NamePlateCastBarDisplay = { None = 0, SpellName = 1, SpellIcon = 2, SpellTarget = 3, HighlightImportantCasts = 4, HighlightWhenCastTarget = 5 },
+	NamePlateEnemyNpcAuraDisplay = { None = 0, Buffs = 1, Debuffs = 2, CrowdControl = 3 },
+	NamePlateEnemyPlayerAuraDisplay = { None = 0, Buffs = 1, Debuffs = 2, LossOfControl = 3 },
+	NamePlateFriendlyPlayerAuraDisplay = { None = 0, Buffs = 1, Debuffs = 2, LossOfControl = 3 },
+	NamePlateThreatDisplay = { None = 0, Progressive = 1, Flash = 2, HealthBarColor = 3 },
+	NamePlateStackType = { None = 0, Enemy = 1, Friendly = 2 },
+	NamePlateStyle = { Modern = 0, Thin = 1, Block = 2, HealthFocus = 3, CastFocus = 4, Legacy = 5, Classic = 6 },
+}
+AnchorUtil = { FlowDirection = { Left = 1, Right = 2, Up = 3, Down = 4 } }
+
+-- CVars -----------------------------------------------------------------
+CVARS = CVARS or {
+	nameplateInfoDisplay = "0", nameplateCastBarDisplay = "0", nameplateThreatDisplay = "0",
+	nameplateEnemyNpcAuraDisplay = "0", nameplateEnemyPlayerAuraDisplay = "0", nameplateFriendlyPlayerAuraDisplay = "0",
+	nameplateStackingTypes = "0", nameplateShowAll = "0", nameplateShowOffscreen = "1", nameplateShowFriendlyNpcs = "1",
+	nameplateOccludedAlphaMult = "0.6", nameplateStyle = "1", nameplateDebuffPadding = "2",
+	nameplateShowOnlyNameForFriendlyPlayerUnits = "0", nameplateUseClassColorForFriendlyPlayerUnitNames = "0",
+	nameplateShowFriendlyPlayerMinions = "0", UnitNameFriendlyMinionName = "1",
+}
+local DEFAULTS = {}
+for k, v in pairs(CVARS) do DEFAULTS[k] = v end
+CVAR_SETS = 0
+local function bits(name) return tonumber(CVARS[name]) or 0 end
+C_CVar = {}
+function C_CVar.GetCVar(name) return CVARS[name] end
+function C_CVar.GetCVarDefault(name) return DEFAULTS[name] end
+function C_CVar.SetCVar(name, value)
+	assert(not IN_COMBAT, "SetCVar in combat: " .. name)
+	assert(CVARS[name] ~= nil, "unknown cvar " .. name)
+	CVARS[name] = tostring(value); CVAR_SETS = CVAR_SETS + 1
+	return true
+end
+function C_CVar.GetCVarBitfield(name, index)
+	assert(index >= 1, "luaIndex must be >= 1")
+	return math.floor(bits(name) / 2 ^ (index - 1)) % 2 == 1
+end
+function C_CVar.SetCVarBitfield(name, index, value)
+	assert(not IN_COMBAT, "SetCVarBitfield in combat: " .. name)
+	assert(CVARS[name] ~= nil, "unknown cvar " .. name)
+	assert(type(value) == "boolean", "bitfield value must be boolean")
+	local cur = C_CVar.GetCVarBitfield(name, index)
+	local b = bits(name)
+	if value and not cur then b = b + 2 ^ (index - 1) elseif (not value) and cur then b = b - 2 ^ (index - 1) end
+	CVARS[name] = tostring(math.floor(b)); CVAR_SETS = CVAR_SETS + 1
+	return true
+end
+
+-- frames ----------------------------------------------------------------
+local VALID_FILTERS = { HELPFUL = 1, HARMFUL = 1, PLAYER = 1, RAID = 1, CANCELABLE = 1, INCLUDE_NAME_PLATE_ONLY = 1, MAW = 1,
+	EXTERNAL_DEFENSIVE = 1, CROWD_CONTROL = 1, RAID_IN_COMBAT = 1, RAID_PLAYER_DISPELLABLE = 1, BIG_DEFENSIVE = 1, IMPORTANT = 1, DISPELLABLE = 1 }
+
+local FrameMethods = {}
+FrameMethods.__index = function(self, key)
+	local m = FrameMethods[key]
+	if m then return m end
+	if type(key) == "string" and key:match("^%u") then
+		return function() return nil end -- any other widget method: no-op
+	end
+	return nil
+end
+
+local function NewObject(kind, parent)
+	local o = setmetatable({ kind = kind, parent = parent, shown = true, scripts = {}, points = {}, events = {} }, FrameMethods)
+	return o
+end
+
+function FrameMethods:RegisterEvent(e) assert(KNOWN_EVENTS[e] ~= false, "unknown event " .. e); self.events[e] = true end
+function FrameMethods:RegisterUnitEvent(e, ...) self.events[e] = true; self.unitEventUnits = { ... } end
+function FrameMethods:UnregisterEvent(e) self.events[e] = nil end
+function FrameMethods:SetScript(name, fn) self.scripts[name] = fn end
+function FrameMethods:Show() self.shown = true end
+function FrameMethods:Hide() self.shown = false end
+function FrameMethods:IsShown() return self.shown end
+function FrameMethods:SetShown(v) self.shown = v and true or false end
+function FrameMethods:GetFrameLevel() return self.level or 1 end
+function FrameMethods:SetFrameLevel(l) self.level = l end
+function FrameMethods:ClearAllPoints() self.points = {} end
+function FrameMethods:SetPoint(...) table.insert(self.points, { ... }) end
+function FrameMethods:SetAllPoints(rel) self.points = { { "ALL", rel } } end
+function FrameMethods:SetSize(w, h) self.width, self.height = w, h end
+function FrameMethods:SetWidth(w) self.width = w end
+function FrameMethods:SetWordWrap(v) self.wordWrap = v end
+function FrameMethods:CanWordWrap() if self.wordWrap == nil then return true end return self.wordWrap end
+function FrameMethods:GetWidth() return self.width or 140 end
+function FrameMethods:SetAlpha(a) self.alpha = a end
+function FrameMethods:GetCenter() return 100, 100 end
+function FrameMethods:GetEffectiveScale() return 1 end
+function FrameMethods:CreateTexture() return NewObject("Texture", self) end
+function FrameMethods:CreateFontString(_, _, template) local fs = NewObject("FontString", self); fs.template = template; return fs end
+function FrameMethods:SetTextHeight(h) assert(type(h) == "number", "SetTextHeight needs a number"); self.textHeight = h end
+function FrameMethods:SetStatusBarTexture(t) self.barTexture = NewObject("Texture", self) end
+function FrameMethods:GetStatusBarTexture() return self.barTexture end
+function FrameMethods:SetMinMaxValues(a, b) self.min, self.max = a, b end
+function FrameMethods:GetValue() return self.value end
+function FrameMethods:SetText(t) self.text = t end
+function FrameMethods:GetNumPoints() return #self.points end
+function FrameMethods:GetPoint(i) local p = self.points[i or 1]; if p then return unpack(p, 1, 5) end end
+function FrameMethods:SetJustifyH(j) self.justify = j end
+function FrameMethods:GetJustifyH() return self.justify or "LEFT" end
+function hooksecurefunc(t, key, fn)
+	if type(t) == "string" then t, key, fn = _G, t, key end
+	local orig = t[key]
+	assert(type(orig) == "function", "hooksecurefunc: no function " .. tostring(key))
+	rawset(t, key, function(...) local r = { orig(...) }; fn(...); return unpack(r) end)
+end
+function FrameMethods:SetValue(v) self.value = v end
+
+-- aura container
+local function ValidateFilter(filter)
+	for token in filter:gmatch("[^|]+") do
+		local bare = token:gsub("^!", "")
+		assert(VALID_FILTERS[bare], "invalid aura filter component: " .. token)
+	end
+end
+function FrameMethods:AddAuraGroup(key, filter, options)
+	assert(self.kind == "AuraContainer")
+	assert(type(key) == "string" and key ~= "")
+	assert(not self.groups[key], "group exists")
+	ValidateFilter(filter)
+	assert(options.maxFrameCount == nil or (type(options.maxFrameCount) == "number" and options.maxFrameCount >= 0 and options.maxFrameCount == math.floor(options.maxFrameCount)), "maxFrameCount must be a non-negative integer")
+	if options.layout then
+		for _, f in ipairs({ "elementSpacing", "lineSpacing", "groupSpacing", "groupLineSpacing", "elementWidth", "elementHeight", "layoutIndex" }) do
+			local v = options.layout[f]
+			assert(v == nil or type(v) == "number", f .. " must be a number")
+		end
+	end
+	self.groups[key] = { filter = filter, enabled = true, options = options, buttons = {} }
+	-- the game creates a batch of frames up front
+	for _ = 1, 3 do
+		local b = NewObject("AuraButton", self)
+		table.insert(self.groups[key].buttons, b)
+		if options.initializeFrame then options.initializeFrame(b) end
+	end
+end
+function FrameMethods:SetAuraGroupEnabled(key, v) assert(self.groups[key], "no group " .. key); assert(type(v) == "boolean", "enabled must be boolean"); self.groups[key].enabled = v end
+function FrameMethods:SetAuraGroupMaxFrameCount(key, n) assert(self.groups[key]); assert(type(n) == "number" and n == math.floor(n) and n >= 0, "bad max"); self.groups[key].max = n end
+function FrameMethods:SetAuraGroupLayout(key, layout) assert(self.groups[key]); self.groups[key].layout = layout end
+function FrameMethods:SetFlowLayoutAnchorPoint(p) assert(type(p) == "string") end
+function FrameMethods:SetFlowLayoutGrowthDirection(h, v) assert(h and v, "directions") end
+function FrameMethods:SetFlowLayoutMaximumLineSize(n) assert(n == nil or type(n) == "number") end
+function FrameMethods:SetEnabled(v) self.enabled = v end
+function FrameMethods:SetUnit(u) assert(type(u) == "string", "SetUnit needs a string"); self.unit = u end
+function FrameMethods:UpdateAllAuras() self.updates = (self.updates or 0) + 1 end
+-- aura button
+function FrameMethods:SetIcon(t) assert(t and t.kind == "Texture"); self.icon = t end
+function FrameMethods:SetDurationCooldown(c) assert(c and c.kind == "Cooldown"); self.cooldown = c end
+function FrameMethods:SetApplicationCount(fs) assert(fs and fs.kind == "FontString"); self.count = fs end
+function FrameMethods:SetDurationText(fs, opts) assert(fs and fs.kind == "FontString"); self.durationText = fs; self.durationOpts = opts end
+function FrameMethods:ClearDurationText() self.durationText = nil end
+
+ALL_FRAMES = {}
+function CreateFrame(kind, name, parent, template)
+	if kind == "AuraContainer" then
+		assert(template == "CustomAuraContainerTemplate", "aura containers need the template")
+	end
+	local f = NewObject(kind, parent)
+	f.template = template
+	f.name = name
+	if kind == "AuraContainer" then f.groups = {} end
+	table.insert(ALL_FRAMES, f)
+	return f
+end
+C_XMLUtil = { GetTemplateInfo = function(name) return name == "CustomAuraContainerTemplate" and {} or nil end }
+C_StringUtil = { CreateNumericRuleFormatter = function()
+	return { bps = {}, AddBreakpoint = function(self, bp) assert(bp.threshold and bp.format); table.insert(self.bps, bp) end }
+end }
+
+KNOWN_EVENTS = KNOWN_EVENTS or {}
+
+-- number formatting (secret in -> secret out)
+function AbbreviateLargeNumbers(v) if issecretvalue(v) then return SECRET end; return ("%.2fK"):format(v / 1000) end
+function BreakUpLargeNumbers(v) if issecretvalue(v) then return SECRET end; local s = tostring(math.floor(v)); return (s:reverse():gsub("(%d%d%d)", "%1 "):reverse():gsub("^ ", "")) end
+ABBREV_CONFIGS = 0
+function CreateAbbreviateConfig(data)
+	for _, bp in ipairs(data) do
+		assert(type(bp.breakpoint) == "number" and type(bp.abbreviation) == "string" and type(bp.significandDivisor) == "number" and type(bp.fractionDivisor) == "number", "bad breakpoint")
+		assert(math.abs(bp.significandDivisor * bp.fractionDivisor - bp.breakpoint) < 1e-6, "significand x fraction must equal the breakpoint order")
+	end
+	for i = 2, #data do assert(data[i - 1].breakpoint > data[i].breakpoint, "breakpoints must go from largest to smallest") end
+	ABBREV_CONFIGS = ABBREV_CONFIGS + 1
+	return { data = data }
+end
+function AbbreviateNumbers(v, options)
+	if issecretvalue(v) then return SECRET end
+	local data = options and (options.config and options.config.data or options.breakpointData) or {}
+	for _, bp in ipairs(data) do
+		if v >= bp.breakpoint then
+			local significand = math.floor(v / bp.significandDivisor)
+			local decimals = math.floor(math.log10(bp.fractionDivisor) + 0.5)
+			return ("%." .. decimals .. "f"):format(significand / bp.fractionDivisor) .. bp.abbreviation
+		end
+	end
+	return tostring(v)
+end
+
+-- spells ------------------------------------------------------------------
+SPELLS = {
+	[32379] = { name = "Слово Тьмы: Смерть", desc = "Слово, исполненное темной силы, наносит цели |cffffffff412|r ед. урона от темной магии. Если цель не погибает, вы получаете урон." },
+}
+SPELL_BY_NAME = {} -- name -> spellID the player knows (rank / override)
+C_Spell = {}
+function C_Spell.GetSpellName(id) local s = SPELLS[id]; return s and s.name end
+function C_Spell.GetSpellInfo(idOrName)
+	if type(idOrName) == "string" then
+		local id = SPELL_BY_NAME[idOrName]
+		if not id then for k, v in pairs(SPELLS) do if v.name == idOrName then id = k end end end
+		return id and { spellID = id, name = idOrName } or nil
+	end
+	local s = SPELLS[idOrName]; return s and { spellID = idOrName, name = s.name } or nil
+end
+function C_Spell.GetSpellDescription(id) local s = SPELLS[id]; return s and s.desc end
+SPELL_LOAD_REQUESTS = 0
+function C_Spell.RequestLoadSpellData() SPELL_LOAD_REQUESTS = SPELL_LOAD_REQUESTS + 1 end
+
+-- units & nameplates ------------------------------------------------------
+UNITS = {}
+function UnitClass(u) local x = UNITS[u] or {}; return x.className, x.class end
+function UnitCanAttack(_, u) return (UNITS[u] or {}).canAttack end
+function UnitIsPlayer(u) return (UNITS[u] or {}).isPlayer end
+function UnitIsFriend(_, u) return (UNITS[u] or {}).isFriend end
+function UnitHealthMax(u) return (UNITS[u] or {}).maxHealth end
+function UnitAffectingCombat(u) return (UNITS[u] or {}).inCombat end
+function UnitExists(u) return UNITS[u] ~= nil end
+function UnitIsMinion(u) return (UNITS[u] or {}).isMinion or false end
+function UnitIsOtherPlayersPet(u) return (UNITS[u] or {}).isPet or false end
+function FrameMethods:SetVertexColor(r, g, b) self.vertex = { r, g, b } end
+-- the game's name update: colours a friendly NPC name green
+function CompactUnitFrame_UpdateName(frame) frame.name:SetVertexColor(0, 1, 0) end
+function UnitIsUnit(a, b) return a == b end
+IN_GROUP, PLAYER_ROLE = false, "NONE"
+function IsInGroup() return IN_GROUP end
+function UnitGroupRolesAssigned() return PLAYER_ROLE end
+THREAT = {} -- unit -> scaled percentage (nil = not on its threat list)
+function UnitDetailedThreatSituation(_, u)
+	local t = THREAT[u]
+	if t == nil then return end
+	return false, 0, t, t, 1000
+end
+C_Texture = { GetAtlasInfo = function(name) if name == "UI-HUD-Nameplates-Aggro-Flare" then return { width = 64, height = 10 } end end }
+
+PLATES = {}
+function MakePlate(unit)
+	local plate = NewObject("NamePlate")
+	local uf = NewObject("UnitFrame", plate)
+	uf.HealthBarsContainer = NewObject("Frame", uf)
+	uf.HealthBarsContainer.healthBar = NewObject("StatusBar", uf.HealthBarsContainer)
+	uf.name = NewObject("FontString", uf)
+	local hb = uf.HealthBarsContainer.healthBar
+	hb.Text = NewObject("FontString", hb); hb.LeftText = NewObject("FontString", hb); hb.RightText = NewObject("FontString", hb)
+	-- the game's text status bar (TextStatusBar.lua): fields swapped like NamePlateHealthBarMixin:OnLoad
+	hb.TextString = hb.Text
+	hb.LeftText, hb.RightText = hb.RightText, hb.LeftText
+	hb.showNumeric, hb.showPercentage = true, true
+	rawset(hb, "UpdateTextStringWithValues", function(self, textString, value)
+		if self.showPercentage then
+			self.LeftText:SetText("100%"); self.RightText:SetText(AbbreviateLargeNumbers(value))
+			self.LeftText:Show(); self.RightText:Show(); textString:Hide()
+		else
+			self.LeftText:Hide(); self.RightText:Hide()
+			textString:SetText(AbbreviateLargeNumbers(value)); textString:Show()
+		end
+	end)
+	uf.PlayerLevelDiffFrame = NewObject("Frame", uf)
+	uf.PlayerLevelDiffFrame.width = 26
+	uf.PlayerLevelDiffFrame:SetPoint("LEFT", uf.HealthBarsContainer, "RIGHT", 2, 0)
+	-- the game's name layout (Blizzard_NamePlateUnitFrame UpdateAnchors): Thin = name centred above the bar,
+	-- spanning bar + level frame; Modern = name inside the bar, ending where the health numbers start
+	rawset(uf, "UpdateAnchors", function(self)
+		self.layoutRuns = (self.layoutRuns or 0) + 1
+		self.name:ClearAllPoints()
+		if self.showOnlyName then
+			-- name-only (friendly players with the game option on)
+			self.name:SetJustifyH("CENTER")
+			self.name:SetPoint("BOTTOMLEFT", self.HealthBarsContainer, "TOPLEFT", 4, 2)
+			self.name:SetPoint("BOTTOMRIGHT", self.HealthBarsContainer, "TOPRIGHT", -4, 2)
+		elseif CVARS.nameplateStyle == "0" then
+			self.name:SetJustifyH("LEFT")
+			self.name:SetPoint("LEFT", self.HealthBarsContainer, "LEFT", 4, 0)
+			self.name:SetPoint("RIGHT", self.HealthBarsContainer.healthBar.Text, "LEFT", -2, 0)
+		else
+			self.name:SetJustifyH("CENTER")
+			self.name:SetPoint("BOTTOMLEFT", self.HealthBarsContainer, "TOPLEFT", 0, 2)
+			self.name:SetPoint("RIGHT", self.PlayerLevelDiffFrame, "RIGHT", 0, 0)
+		end
+	end)
+	uf:UpdateAnchors()
+	plate.UnitFrame = uf
+	PLATES[unit] = plate
+	return plate
+end
+C_NamePlate = { GetNamePlateForUnit = function(unit, includeForbidden)
+	local p = PLATES[unit]
+	if p and rawget(p, "forbidden") and not includeForbidden then return nil end
+	return p
+end }
+
+Minimap = NewObject("Frame"); Minimap.width = 140
+GameTooltip = NewObject("GameTooltip")
+CURSOR_X, CURSOR_Y = 100, 200
+function GetCursorPosition() return CURSOR_X, CURSOR_Y end
+
+-- settings ----------------------------------------------------------------
+SETTINGS = {}
+Settings = { VarType = { Boolean = "boolean", String = "string", Number = "number" } }
+function Settings.RegisterVerticalLayoutCategory(name)
+	local cat = { name = name, GetID = function() return 42 end }
+	local lay = { inits = {}, AddInitializer = function(self, i) table.insert(self.inits, i) end }
+	SETTINGS.category, SETTINGS.layout = cat, lay
+	return cat, lay
+end
+function Settings.RegisterProxySetting(cat, variable, varType, name, default, get, set)
+	assert(type(variable) == "string")
+	assert(type(default) == varType, ("default for %s is %s, expected %s"):format(variable, type(default), varType))
+	assert(not SETTINGS[variable], "duplicate setting " .. variable)
+	local s = { variable = variable, varType = varType, default = default, get = get, set = set, notified = 0 }
+	function s:NotifyUpdate() self.notified = self.notified + 1; self.get() end
+	SETTINGS[variable] = s
+	return s
+end
+function Settings.CreateCheckbox(cat, s) s.control = "checkbox" end
+function Settings.CreateSlider(cat, s, options) s.control = "slider"; s.options = options end
+function Settings.CreateDropdown(cat, s, getOptions) s.control = "dropdown"; s.getOptions = getOptions end
+function Settings.CreateSliderOptions(min, max, step)
+	return { min = min, max = max, step = step, SetLabelFormatter = function(self, t, f) self.formatter = f end }
+end
+function Settings.CreateControlTextContainer()
+	local c = { data = {} }
+	function c:Add(v, l) table.insert(self.data, { value = v, label = l }) end
+	function c:GetData() return self.data end
+	return c
+end
+function Settings.RegisterAddOnCategory(cat) SETTINGS.registered = cat end
+function Settings.OpenToCategory(id) SETTINGS.opened = id end
+MinimalSliderWithSteppersMixin = { Label = { Right = 1 } }
+function CreateSettingsListSectionHeaderInitializer(t) return { header = t } end
+function CreateSettingsButtonInitializer(name, text, click, tt, tags) assert(tags ~= nil); return { button = name, click = click } end
+
+-- event helper --------------------------------------------------------------
+function FireEvent(event, ...)
+	for _, f in ipairs(ALL_FRAMES) do
+		if f.events[event] and f.scripts.OnEvent then f.scripts.OnEvent(f, event, ...) end
+	end
+end
