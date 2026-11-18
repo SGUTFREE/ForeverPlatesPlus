@@ -22,13 +22,12 @@ ns.BASE = {
 	["health.decimals"]       = 1,       -- decimals in the short format
 	["native.friendNamesOnly"] = "always", -- never | instance | always: ally players show only the name (no bar, no numbers)
 	["native.friendClassColor"] = false,   -- ally player names in class colour (off: white)
-	["plates.friendNameAlpha"]  = 55,      -- ally name opacity, % (100 = as the game draws it)
 	["plates.petNamesOnly"]     = true,    -- allies' pets and minions: only the name, like ally players
 	["plates.petOwner"]         = true,    -- small line under a pet's name with its owner
-	["plates.guild"]            = "none",  -- guild under/above player names: none | allies | all
+	["plates.guildFriends"]     = false,   -- guild of allied players (small line under / above the name)
+	["plates.guildEnemies"]     = false,   -- guild of enemy players
 	["plates.petClassColor"]    = true,    -- pet names in the owner's class colour (white if the owner isn't found)
 	["plates.friendHealthText"] = false, -- health numbers on friendly plates (the game option is shared by all plates)
-	["plates.nameScale"]        = 115,     -- name size on all plates the addon can touch, % of the game's
 	["plates.friendFullNames"]  = true,  -- friendly names written in full instead of cut with "..."
 	["plates.enemyFullNames"]   = true,  -- the same for enemies
 	-- health numbers on enemies by state: none | value | percent | both
@@ -72,16 +71,47 @@ ns.BASE = {
 
 	-- our extra aura rows, drawn in the slot of the game's debuff row (above the name)
 	["auras.purge"]           = true,   -- HELPFUL|RAID_PLAYER_DISPELLABLE on enemies (buffs you can remove)
-	["auras.purgeSize"]       = 20,
 	["auras.purgeMax"]        = 3,
 	["auras.mine"]            = true,   -- HARMFUL|PLAYER on enemies
 	["auras.minePlayers"]     = true,
-	["auras.mineSize"]        = 22,
 	["auras.mineMax"]         = 6,
 	["auras.dispel"]          = true,   -- HARMFUL|RAID_PLAYER_DISPELLABLE on allies
-	["auras.dispelSize"]      = 16,
 	["auras.dispelMax"]       = 3,
 	["auras.timer"]           = true,
+
+	-- appearance of each part (Look.lua): size and opacity in %, offsets in pixels (right, up);
+	-- "place" of the small second line: auto (under a name-only plate, above a plate with a bar) | above | below
+	["look.enemyName.scale"]   = 115,
+	["look.enemyName.alpha"]   = 100,
+	["look.friendName.scale"]  = 115,
+	["look.friendName.alpha"]  = 55,     -- ally names see-through, so allies don't distract
+	["look.guild.scale"]       = 100,    -- of the name's size
+	["look.guild.alpha"]       = 85,     -- of the name's opacity
+	["look.guild.place"]       = "auto",
+	["look.petOwner.scale"]    = 100,
+	["look.petOwner.alpha"]    = 85,
+	["look.petOwner.place"]    = "auto",
+	["look.health.scale"]      = 100,
+	["look.health.alpha"]      = 100,
+	["look.castText.scale"]    = 115,    -- spell name a bit bigger than the game's
+	["look.castText.alpha"]    = 100,
+	["look.castTimer.scale"]   = 115,
+	["look.castTimer.alpha"]   = 100,
+	["look.mine.scale"]        = 100,    -- 100% = 22 px
+	["look.mine.alpha"]        = 100,
+	["look.purge.scale"]       = 100,    -- 100% = 20 px
+	["look.purge.alpha"]       = 100,
+	["look.dispel.scale"]      = 100,    -- 100% = 16 px
+	["look.dispel.alpha"]      = 100,
+	["look.gameBuffs.scale"]   = 100,
+	["look.gameBuffs.alpha"]   = 100,
+	["look.gameDebuffs.scale"] = 100,
+	["look.gameDebuffs.alpha"] = 100,
+	["look.gameCC.scale"]      = 100,
+	["look.gameCC.alpha"]      = 100,
+	["look.quest.scale"]       = 100,    -- 100% = 14 px
+	["look.quest.alpha"]       = 100,
+	-- every offset ("look.<element>.x" / ".y", "look.addonAuras.x" / ".y" for our three aura rows) is 0 by default
 
 	-- execute zone on enemy health bars
 	["killzone.enabled"]      = false,

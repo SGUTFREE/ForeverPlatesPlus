@@ -162,7 +162,6 @@ local function CreateExtras(unitFrame)
 	else
 		timer:SetFontObject("SystemFont_NamePlate_Outlined")
 	end
-	timer:SetPoint("LEFT", castBar, "RIGHT", 3, 0)
 	timer:SetJustifyH("LEFT")
 	timer:Hide()
 
@@ -180,6 +179,36 @@ local function CreateExtras(unitFrame)
 	return extra
 end
 
+-- size, opacity and place of the spell name and the timer (appearance page); every plate, the game's
+-- cast bar text is re-anchored by the game on each layout, so this runs again after it
+local function ApplyLook(unitFrame)
+	local castBar = GetCastBar(unitFrame)
+	if not castBar then
+		return
+	end
+	local scale, alpha = ns.LookScale("castText"), ns.LookAlpha("castText")
+	for _, text in ipairs({ castBar.Text, castBar.CastTargetNameText }) do
+		if type(text) == "table" then
+			ns.ApplyTextScale(text, scale)
+			ns.ApplyAlpha(text, alpha)
+		end
+	end
+	if type(castBar.Text) == "table" then
+		ns.PlaceRegion(castBar.Text, ns.LookOffset("castText"))
+	end
+	local extra = extras[unitFrame]
+	if extra then
+		local timer = extra.timer
+		local dx, dy = ns.LookOffset("castTimer")
+		timer:ClearAllPoints()
+		timer:SetPoint("LEFT", castBar, "RIGHT", 3 + dx, dy)
+		if timer.SetTextScale then
+			timer:SetTextScale(ns.LookScale("castTimer"))
+		end
+		timer:SetAlpha(ns.LookAlpha("castTimer"))
+	end
+end
+
 local function IsEnemy(unit)
 	local kind = ns.GetUnitKind(unit)
 	return kind == "enemyNpc" or kind == "enemyPlayer"
@@ -193,7 +222,7 @@ function M:OnInit()
 	events:SetScript("OnEvent", ResolveInterrupt)
 end
 
-function M:OnPlateAdded(unit, unitFrame)
+local function SetUpExtras(unit, unitFrame)
 	local wanted = IsEnemy(unit) and (ns.Get("cast.timer") or ns.Get("cast.interruptReady"))
 	local extra = extras[unitFrame]
 	if not wanted then
@@ -219,6 +248,15 @@ function M:OnPlateAdded(unit, unitFrame)
 	end
 end
 
+function M:OnPlateAdded(unit, unitFrame)
+	SetUpExtras(unit, unitFrame)
+	ApplyLook(unitFrame)
+end
+
+function M:OnPlateLayout(_, unitFrame)
+	ApplyLook(unitFrame)
+end
+
 function M:OnPlateRemoved(_, unitFrame)
 	local extra = extras[unitFrame]
 	if extra then
@@ -230,7 +268,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^cast%.") then
+	if key and not key:find("^cast%.") and not key:find("^look%.") then
 		return
 	end
 	ns.ForEachPlate(function(unit, unitFrame)

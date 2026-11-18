@@ -211,14 +211,146 @@ local function BuildMain()
 	end, L.RESET_TT, true))
 
 	Header(L.SECTION_GENERAL)
-	Slider("plates.nameScale", L.NAME_SCALE, L.NAME_SCALE_TT, 80, 150, 5, Percent)
-	Dropdown("plates.guild", L.GUILD, L.GUILD_TT, {
-		{ "none", L.GUILD_NONE },
-		{ "allies", L.GUILD_ALLIES },
-		{ "all", L.GUILD_ALL },
-	})
 	Checkbox("ui.minimap", L.MINIMAP_BUTTON)
 	Checkbox("native.manage", L.MANAGE_NATIVE, L.MANAGE_NATIVE_TT)
+end
+
+------------------------------------------------------------------------
+-- appearance: pick a part (in the sketch or the list), then its sliders
+------------------------------------------------------------------------
+
+local PREVIEW_TEMPLATE = "ForeverPlatesPreviewTemplate"
+local PREVIEW_HEIGHT = 196
+
+local function SelectedElement()
+	local element = ns.db and ns.db.lookElement
+	for _, known in ipairs(ns.LOOK_ELEMENTS) do
+		if known == element then
+			return element
+		end
+	end
+	return ns.LOOK_ELEMENTS[1]
+end
+ns.GetLookElement = SelectedElement
+
+local function BuildLook()
+	Page(L.PAGE_LOOK, L.ABOUT_LOOK)
+
+	local propSettings = {}
+	local elementSetting
+
+	-- the sketch (LookPreview.lua); clicking a part selects it below
+	if ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
+		and C_XMLUtil.GetTemplateInfo(PREVIEW_TEMPLATE) and Settings.CreateElementInitializer then
+		local initializer = Settings.CreateElementInitializer(PREVIEW_TEMPLATE, { name = L.LOOK_PREVIEW_TITLE, tooltip = L.LOOK_PREVIEW_TT })
+		initializer.GetExtent = function()
+			return PREVIEW_HEIGHT
+		end
+		layout:AddInitializer(initializer)
+	end
+
+	local function OnElementChanged()
+		for _, setting in ipairs(propSettings) do
+			setting:NotifyUpdate()
+		end
+		if ns.RefreshLookPreview then
+			ns.RefreshLookPreview()
+		end
+	end
+
+	local elementEntries = {}
+	for _, element in ipairs(ns.LOOK_ELEMENTS) do
+		table.insert(elementEntries, { element, L["LOOK_" .. element] or element })
+	end
+	elementSetting = Register("ui.lookElement", Settings.VarType.String, L.LOOK_ELEMENT,
+		SelectedElement,
+		function(value)
+			ns.db.lookElement = value
+			OnElementChanged()
+		end,
+		ns.LOOK_ELEMENTS[1])
+	local elementInit = Settings.CreateDropdown(category, elementSetting, function()
+		local container = Settings.CreateControlTextContainer()
+		for _, entry in ipairs(elementEntries) do
+			container:Add(entry[1], entry[2])
+		end
+		return container:GetData()
+	end, L.LOOK_ELEMENT_TT)
+
+	function ns.SelectLookElement(element)
+		if elementSetting.SetValue then
+			elementSetting:SetValue(element) -- the dropdown, the sliders and the sketch follow
+		else
+			ns.db.lookElement = element
+			OnElementChanged()
+		end
+	end
+
+	local function Child(initializer, prop)
+		if initializer and initializer.SetParentInitializer and elementInit then
+			initializer:SetParentInitializer(elementInit, function()
+				return ns.LookHas(SelectedElement(), prop)
+			end)
+		end
+	end
+
+	local function PropSlider(prop, label, tooltip, format)
+		local limits = ns.LOOK_LIMITS[prop]
+		local fallback = (prop == "scale" or prop == "alpha") and 100 or 0
+		local setting = Register("look.current." .. prop, Settings.VarType.Number, label,
+			function()
+				local value = tonumber(ns.Get(ns.LookKey(SelectedElement(), prop))) or fallback
+				return math.max(limits[1], math.min(limits[2], value))
+			end,
+			function(value)
+				value = math.floor(value / limits[3] + 0.5) * limits[3]
+				ns.Set(ns.LookKey(SelectedElement(), prop), value)
+			end,
+			fallback)
+		local options = Settings.CreateSliderOptions(limits[1], limits[2], limits[3])
+		options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, format)
+		Child(Settings.CreateSlider(category, setting, options, tooltip), prop)
+		table.insert(propSettings, setting)
+	end
+
+	local function Offset(value)
+		value = math.floor(value + 0.5)
+		return value > 0 and ("+" .. value) or tostring(value)
+	end
+	PropSlider("scale", L.LOOK_SCALE, L.LOOK_SCALE_TT, Percent)
+	PropSlider("alpha", L.LOOK_ALPHA, L.LOOK_ALPHA_TT, Percent)
+	PropSlider("x", L.LOOK_X, L.LOOK_X_TT, Offset)
+	PropSlider("y", L.LOOK_Y, L.LOOK_Y_TT, Offset)
+
+	local placeSetting = Register("look.current.place", Settings.VarType.String, L.LOOK_PLACE,
+		function()
+			local element = SelectedElement()
+			return ns.LookHas(element, "place") and ns.LookPlace(element) or "auto"
+		end,
+		function(value)
+			local element = SelectedElement()
+			if ns.LookHas(element, "place") then
+				ns.Set(ns.LookKey(element, "place"), value)
+			end
+		end,
+		"auto")
+	Child(Settings.CreateDropdown(category, placeSetting, function()
+		local container = Settings.CreateControlTextContainer()
+		container:Add("auto", L.LOOK_PLACE_AUTO)
+		container:Add("above", L.LOOK_PLACE_ABOVE)
+		container:Add("below", L.LOOK_PLACE_BELOW)
+		return container:GetData()
+	end, L.LOOK_PLACE_TT), "place")
+	table.insert(propSettings, placeSetting)
+
+	local reset = CreateSettingsButtonInitializer(L.LOOK_RESET, L.BUTTON_RESET, function()
+		ns.ResetLook(SelectedElement())
+	end, L.LOOK_RESET_TT, true)
+	Child(reset, "scale")
+	layout:AddInitializer(reset)
+	layout:AddInitializer(CreateSettingsButtonInitializer(L.LOOK_RESET_ALL, L.BUTTON_RESET, function()
+		ns.ResetLook(nil)
+	end, L.LOOK_RESET_ALL_TT, true))
 end
 
 local function BuildEnemies()
@@ -247,6 +379,7 @@ local function BuildEnemies()
 
 	Header(L.SECTION_NAME_MARKS)
 	Checkbox("plates.enemyFullNames", L.ENEMY_FULL_NAMES, L.ENEMY_FULL_NAMES_TT)
+	Checkbox("plates.guildEnemies", L.GUILD_ENEMIES, L.GUILD_TT)
 	Checkbox("info.quest", L.QUEST_MARK, L.QUEST_MARK_TT)
 
 	Header(L.SECTION_WHICH_ENEMIES)
@@ -266,8 +399,8 @@ local function BuildAllies()
 		{ "always", L.NAMES_ONLY_ALWAYS },
 	})
 	Checkbox("native.friendClassColor", L.FRIEND_CLASS_COLOR, L.FRIEND_CLASS_COLOR_TT)
-	Slider("plates.friendNameAlpha", L.FRIEND_NAME_ALPHA, L.FRIEND_NAME_ALPHA_TT, 20, 100, 5, Percent)
 	Checkbox("plates.friendFullNames", L.FRIEND_FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
+	Checkbox("plates.guildFriends", L.GUILD_FRIENDS, L.GUILD_TT)
 	Checkbox("plates.petNamesOnly", L.PET_NAMES_ONLY, L.PET_NAMES_ONLY_TT)
 	Checkbox("plates.petClassColor", L.PET_CLASS_COLOR, L.PET_CLASS_COLOR_TT)
 	Checkbox("plates.petOwner", L.PET_OWNER, L.PET_OWNER_TT)
@@ -300,17 +433,14 @@ local function BuildAuras()
 	Header(L.SECTION_MY_DEBUFFS)
 	Checkbox("auras.mine", L.MINE, L.MINE_TT)
 	Checkbox("auras.minePlayers", L.MINE_PLAYERS)
-	Slider("auras.mineSize", L.MINE_SIZE, nil, 14, 36, 1)
 	Slider("auras.mineMax", L.MINE_MAX, nil, 1, 12, 1)
 
 	Header(L.SECTION_PURGE)
 	Checkbox("auras.purge", L.PURGE, L.PURGE_TT)
-	Slider("auras.purgeSize", L.PURGE_SIZE, nil, 12, 32, 1)
 	Slider("auras.purgeMax", L.PURGE_MAX, nil, 1, 6, 1)
 
 	Header(L.SECTION_DISPEL)
 	Checkbox("auras.dispel", L.DISPEL, L.DISPEL_TT)
-	Slider("auras.dispelSize", L.DISPEL_SIZE, nil, 12, 30, 1)
 	Slider("auras.dispelMax", L.DISPEL_MAX, nil, 1, 6, 1)
 
 	Header(L.SECTION_ICONS)
@@ -396,6 +526,7 @@ end
 
 local function Build()
 	BuildMain()
+	BuildLook()
 	BuildEnemies()
 	BuildAllies()
 	BuildCast()
@@ -419,6 +550,9 @@ function ns.OnSettingsRefreshed()
 		if setting.NotifyUpdate then
 			setting:NotifyUpdate()
 		end
+	end
+	if ns.RefreshLookPreview then
+		ns.RefreshLookPreview()
 	end
 end
 

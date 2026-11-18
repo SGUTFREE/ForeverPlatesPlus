@@ -21,42 +21,53 @@ local M = ns.RegisterModule("HealthText", {})
 
 local hidden = setmetatable({}, { __mode = "k" }) -- game unit frame -> true while all its numbers are hidden
 local savedWordWrap = setmetatable({}, { __mode = "k" }) -- font string we hid -> its word wrap before
+local textAlpha = setmetatable({}, { __mode = "k" }) -- shown font string -> opacity we gave it (nil = the game's)
 
 local function HideText(text)
 	if savedWordWrap[text] ~= nil then
 		return -- already hidden; the game never touches alpha or width
 	end
 	savedWordWrap[text] = text:CanWordWrap() and true or false
+	textAlpha[text] = nil
 	text:SetAlpha(0)
 	text:SetWordWrap(false)
 	text:SetWidth(1)
 end
 
-local function RestoreText(text)
-	if savedWordWrap[text] == nil then
-		return -- not ours
+-- alpha: the opacity chosen on the appearance page (1 = the game's)
+local function RestoreText(text, alpha)
+	if savedWordWrap[text] ~= nil then
+		text:SetWidth(0) -- 0 = size to the text again (the game never sets a width on these)
+		text:SetWordWrap(savedWordWrap[text])
+		savedWordWrap[text] = nil
+		text:SetAlpha(alpha)
+		textAlpha[text] = alpha ~= 1 and alpha or nil
+	elseif (textAlpha[text] or 1) ~= alpha then
+		text:SetAlpha(alpha)
+		textAlpha[text] = alpha ~= 1 and alpha or nil
 	end
-	text:SetAlpha(1)
-	text:SetWidth(0) -- 0 = size to the text again (the game never sets a width on these)
-	text:SetWordWrap(savedWordWrap[text])
-	savedWordWrap[text] = nil
 end
 
-local function SetTextShown(text, shown)
+local function SetTextShown(text, shown, alpha)
 	if text then
 		if shown then
-			RestoreText(text)
+			RestoreText(text, alpha)
 		else
 			HideText(text)
 		end
 	end
 end
 
--- mode: "none" | "value" | "percent" | "both"
-local function ShowNumbers(unitFrame, mode)
+-- mode: "none" | "value" | "percent" | "both"; look = false gives the game's size and opacity back
+local function ShowNumbers(unitFrame, mode, look)
 	local healthBar = unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
 	if not healthBar then
 		return
+	end
+	local alpha = look == false and 1 or ns.LookAlpha("health")
+	local scale = look == false and 1 or ns.LookScale("health")
+	for _, text in ipairs({ healthBar.RightText, healthBar.LeftText, healthBar.TextString or healthBar.Text }) do
+		ns.ApplyTextScale(text, scale)
 	end
 	local showValue = mode == "value" or mode == "both"
 	local showPercent = mode == "percent" or mode == "both"
@@ -70,10 +81,18 @@ local function ShowNumbers(unitFrame, mode)
 	else
 		single = showValue or showPercent
 	end
-	SetTextShown(healthBar.RightText, showValue)
-	SetTextShown(healthBar.LeftText, showPercent)
-	SetTextShown(healthBar.TextString or healthBar.Text, single)
+	SetTextShown(healthBar.RightText, showValue, alpha)
+	SetTextShown(healthBar.LeftText, showPercent, alpha)
+	SetTextShown(healthBar.TextString or healthBar.Text, single, alpha)
 	hidden[unitFrame] = (not showValue and not showPercent) or nil
+end
+
+-- the numbers hang on one text pinned to the bar's right edge (the percent); the others follow it
+local function PlaceNumbers(unitFrame)
+	local healthBar = unitFrame.HealthBarsContainer and unitFrame.HealthBarsContainer.healthBar
+	if healthBar then
+		ns.PlaceRegion(healthBar.LeftText, ns.LookOffset("health"))
+	end
 end
 
 ------------------------------------------------------------------------
@@ -81,7 +100,6 @@ end
 ------------------------------------------------------------------------
 
 local nameState = setmetatable({}, { __mode = "k" }) -- unit frame -> { points = game's points, want = bool, ours = bool }
-local hooked = setmetatable({}, { __mode = "k" })
 
 -- vertical part of a left-side point: BOTTOMLEFT -> BOTTOM etc.
 local VERTICAL = { BOTTOMLEFT = "BOTTOM", LEFT = "CENTER", TOPLEFT = "TOP" }
@@ -182,21 +200,27 @@ local function ApplyName(unitFrame)
 	if not state or not state.points then
 		return
 	end
+	local dx, dy = state.dx or 0, state.dy or 0
 	local point, relativePoint, x, y
 	if state.want then
 		point, relativePoint, x, y = SinglePoint(unitFrame, state.points)
 	end
-	if not point then
-		if state.ours then
-			PutBackGamePoints(unitFrame, state)
-		end
-		return
-	end
 	local name = unitFrame.name
-	name:ClearAllPoints()
-	name:SetPoint(point, unitFrame.HealthBarsContainer, relativePoint, x, y)
-	name:SetWidth(0) -- no fixed width either: the name takes the width of its text
-	state.ours = true
+	if point then
+		name:ClearAllPoints()
+		name:SetPoint(point, unitFrame.HealthBarsContainer, relativePoint, x + dx, y + dy)
+		name:SetWidth(0) -- no fixed width either: the name takes the width of its text
+		state.ours = true
+	elseif dx ~= 0 or dy ~= 0 then
+		-- the game's own points, moved (the name may still be cut where the game cuts it)
+		name:ClearAllPoints()
+		for _, p in ipairs(state.points) do
+			name:SetPoint(p[1], p[2], p[3], p[4] + dx, p[5] + dy)
+		end
+		state.ours = true
+	elseif state.ours then
+		PutBackGamePoints(unitFrame, state)
+	end
 end
 
 -- the game just laid the plate out again: its points replace ours
@@ -208,31 +232,27 @@ local function OnGameLayout(unitFrame)
 	state.ours = false
 	state.points = CapturePoints(unitFrame.name)
 	ApplyName(unitFrame)
-	if ns.OnNameLayout then
-		ns.OnNameLayout(unitFrame) -- the subtitle may have to move (name only <-> with a bar)
-	end
 end
 
-local function SetFullName(unitFrame, want)
+-- want: write the name in full; dx, dy: move it from the game's place
+local function SetNameLayout(unitFrame, want, dx, dy)
 	if not unitFrame.name or not unitFrame.HealthBarsContainer then
 		return
 	end
+	dx, dy = dx or 0, dy or 0
 	local state = nameState[unitFrame]
 	if not state then
-		if not want then
+		if not want and dx == 0 and dy == 0 then
 			return
 		end
 		state = {}
 		nameState[unitFrame] = state
 	end
-	if want and not hooked[unitFrame] and type(unitFrame.UpdateAnchors) == "function" then
-		hooked[unitFrame] = true
-		hooksecurefunc(unitFrame, "UpdateAnchors", OnGameLayout)
-	end
 	if not state.ours then
 		state.points = CapturePoints(unitFrame.name)
 	end
 	state.want = want
+	state.dx, state.dy = dx, dy
 	ApplyName(unitFrame)
 end
 
@@ -324,7 +344,7 @@ end
 ------------------------------------------------------------------------
 
 local frameUnit = setmetatable({}, { __mode = "k" }) -- unit frame -> its unit token
-local dimmed = setmetatable({}, { __mode = "k" }) -- unit frame -> true while its name is made transparent by us
+local dimmed = setmetatable({}, { __mode = "k" }) -- unit frame -> name opacity while we make it transparent
 
 ------------------------------------------------------------------------
 -- allies' pets: name only
@@ -504,7 +524,7 @@ local function SetNameAlpha(unitFrame, alpha)
 	end
 	if alpha then
 		name:SetAlpha(alpha)
-		dimmed[unitFrame] = true
+		dimmed[unitFrame] = alpha
 	elseif dimmed[unitFrame] then
 		name:SetAlpha(1)
 		dimmed[unitFrame] = nil
@@ -529,9 +549,15 @@ local function SetNameScale(unitFrame, scale)
 	end
 end
 
-function ns.GetNameScale()
-	local percent = tonumber(ns.Get("plates.nameScale")) or 100
-	return math.max(50, math.min(200, percent)) / 100
+-- the name size on a plate (1 = the game's), for rows drawn above the name
+function ns.GetNameScale(unitFrame)
+	return unitFrame and scaled[unitFrame] or 1
+end
+
+-- how far the name was moved up (negative: down)
+function ns.GetNameOffsetY(unitFrame)
+	local state = unitFrame and nameState[unitFrame]
+	return state and state.dy or 0
 end
 
 ------------------------------------------------------------------------
@@ -550,7 +576,8 @@ local function ShowsOnlyName(unitFrame)
 	return unitFrame.showOnlyName == true or petMode[unitFrame] ~= nil
 end
 
-local function SetSubtitle(unitFrame, text, color, alpha)
+-- element: "guild" or "petOwner" (size, opacity and place from the appearance page, relative to the name)
+local function SetSubtitle(unitFrame, text, color, element)
 	local line = subtitles[unitFrame]
 	local name = unitFrame.name
 	if not text or not name then
@@ -576,21 +603,29 @@ local function SetSubtitle(unitFrame, text, color, alpha)
 	else
 		line:SetFontObject("SystemFont_NamePlate_Outlined")
 	end
+	local scale = (scaled[unitFrame] or 1) * ns.LookScale(element)
 	if line.SetTextScale then
-		line:SetTextScale(ns.GetNameScale())
+		line:SetTextScale(scale)
 	end
 	line:SetText(text)
 	line:SetTextColor(color[1], color[2], color[3])
-	line:SetAlpha(alpha or 1)
+	line:SetAlpha((dimmed[unitFrame] or 1) * ns.LookAlpha(element))
 	line:ClearAllPoints()
-	local above = not ShowsOnlyName(unitFrame)
-	if above then
-		line:SetPoint("BOTTOM", name, "TOP", 0, SUBTITLE_GAP)
+	local place = ns.LookPlace(element)
+	local above
+	if place == "auto" then
+		above = not ShowsOnlyName(unitFrame)
 	else
-		line:SetPoint("TOP", name, "BOTTOM", 0, -SUBTITLE_GAP)
+		above = place == "above"
+	end
+	local dx, dy = ns.LookOffset(element)
+	if above then
+		line:SetPoint("BOTTOM", name, "TOP", dx, SUBTITLE_GAP + dy)
+	else
+		line:SetPoint("TOP", name, "BOTTOM", dx, -SUBTITLE_GAP + dy)
 	end
 	line:Show()
-	local height = above and (size * ns.GetNameScale() + SUBTITLE_GAP) or nil
+	local height = above and math.max(0, size * scale + SUBTITLE_GAP + dy) or nil
 	if subtitleAbove[unitFrame] ~= height then
 		subtitleAbove[unitFrame] = height
 		if ns.ReanchorAuras then
@@ -610,11 +645,9 @@ function ns.GetSubtitleHeight(unitFrame)
 end
 
 local function GuildTag(unit, kind)
-	local mode = ns.Get("plates.guild")
-	if mode ~= "allies" and mode ~= "all" then
-		return nil
-	end
-	if kind ~= "friendlyPlayer" and not (mode == "all" and kind == "enemyPlayer") then
+	local wanted = (kind == "friendlyPlayer" and ns.Get("plates.guildFriends"))
+		or (kind == "enemyPlayer" and ns.Get("plates.guildEnemies"))
+	if not wanted then
 		return nil
 	end
 	if not GetGuildInfo then
@@ -650,30 +683,35 @@ local function Update(unit, unitFrame)
 	local mode, isFriendly = NumbersMode(unit, unitFrame)
 	modeByFrame[unitFrame] = mode
 	ShowNumbers(unitFrame, mode)
+	PlaceNumbers(unitFrame)
+
+	local nameElement = isFriendly and "friendName" or "enemyName"
 	local wantFull
 	if isFriendly then
 		wantFull = ns.Get("plates.friendFullNames")
 	else
 		wantFull = ns.Get("plates.enemyFullNames")
 	end
-	SetFullName(unitFrame, wantFull and true or false)
+	SetNameLayout(unitFrame, wantFull and true or false, ns.LookOffset(nameElement))
 
 	local isPet = isFriendly and ns.Get("plates.petNamesOnly") and IsAllyPet(unit)
 	local pet = isPet and PetInfo(unit) or nil
 	SetPetNameOnly(unitFrame, pet)
 
-	local opacity = isFriendly and tonumber(ns.Get("plates.friendNameAlpha")) or 100
-	local nameAlpha = opacity < 100 and math.max(opacity, 10) / 100 or nil
-	SetNameAlpha(unitFrame, nameAlpha)
+	local alpha = ns.LookAlpha(nameElement)
+	SetNameAlpha(unitFrame, alpha ~= 1 and alpha or nil)
 
-	local scale = ns.GetNameScale()
+	local scale = ns.LookScale(nameElement)
 	SetNameScale(unitFrame, scale ~= 1 and scale or nil)
 
 	if pet and pet.owner and ns.Get("plates.petOwner") then
-		SetSubtitle(unitFrame, pet.owner, pet.color, (nameAlpha or 1) * 0.85)
+		SetSubtitle(unitFrame, pet.owner, pet.color, "petOwner")
 	else
-		local guild = GuildTag(unit, ns.GetUnitKind(unit))
-		SetSubtitle(unitFrame, guild, GUILD_COLOR, (nameAlpha or 1) * 0.85)
+		SetSubtitle(unitFrame, GuildTag(unit, ns.GetUnitKind(unit)), GUILD_COLOR, "guild")
+	end
+	-- the aura row above the name follows the name's size and place
+	if ns.ReanchorAuras then
+		ns.ReanchorAuras(unitFrame)
 	end
 end
 
@@ -684,9 +722,12 @@ local function Refresh(unitFrame)
 	end
 end
 
-function ns.OnNameLayout(unitFrame)
+-- the game laid the plate out again: name, numbers and the second line back where we want them
+function M:OnPlateLayout(_, unitFrame)
+	OnGameLayout(unitFrame)
+	PlaceNumbers(unitFrame)
 	if subtitles[unitFrame] and subtitles[unitFrame]:IsShown() then
-		Refresh(unitFrame)
+		Refresh(unitFrame) -- name only <-> with a bar: the line may change sides
 	end
 end
 
@@ -710,7 +751,7 @@ function ns.DebugNames()
 					"unit=" .. tostring(frameUnit[unitFrame]),
 					"kind=" .. tostring(frameUnit[unitFrame] and ns.GetUnitKind(frameUnit[unitFrame])),
 					"onlyName=" .. tostring(unitFrame.showOnlyName),
-					"hooked=" .. tostring(hooked[unitFrame] == true),
+					"offset=" .. tostring(state and state.dx) .. "," .. tostring(state and state.dy),
 					"want=" .. tostring(state and state.want),
 					"ours=" .. tostring(state and state.ours),
 					"captured=" .. tostring(state and state.points and #state.points),
@@ -830,12 +871,12 @@ function M:OnPlateRemoved(_, unitFrame)
 	-- unit frames are reused: give everything back before another unit takes this frame
 	frameUnit[unitFrame] = nil
 	modeByFrame[unitFrame] = nil
-	SetFullName(unitFrame, false)
+	SetNameLayout(unitFrame, false, 0, 0)
 	SetNameAlpha(unitFrame, nil)
 	SetNameScale(unitFrame, nil)
 	SetPetNameOnly(unitFrame, nil)
 	SetSubtitle(unitFrame, nil)
-	ShowNumbers(unitFrame, "both")
+	ShowNumbers(unitFrame, "both", false)
 	hidden[unitFrame] = nil
 end
 
@@ -855,7 +896,7 @@ function M:Apply(key)
 			end
 		end)
 	end
-	if key == nil or key:find("^plates%.") or key:find("^enemyText%.") then
+	if key == nil or key:find("^plates%.") or key:find("^enemyText%.") or key:find("^look%.") then
 		ns.ForEachPlate(Update)
 	end
 end

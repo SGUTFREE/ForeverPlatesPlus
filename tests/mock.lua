@@ -133,7 +133,16 @@ function FrameMethods:SetShown(v) self.shown = v and true or false end
 function FrameMethods:GetFrameLevel() return self.level or 1 end
 function FrameMethods:SetFrameLevel(l) self.level = l end
 function FrameMethods:ClearAllPoints() self.points = {} end
-function FrameMethods:SetPoint(...) table.insert(self.points, { ... }) end
+-- like the game: setting a point that is already set replaces it
+function FrameMethods:SetPoint(point, ...)
+	for i, p in ipairs(self.points) do
+		if p[1] == point then self.points[i] = { point, ... }; return end
+	end
+	table.insert(self.points, { point, ... })
+end
+function FrameMethods:SetScale(v) self.scale = v end
+function FrameMethods:GetScale() return self.scale or 1 end
+function FrameMethods:IsVisible() return self.shown end
 function FrameMethods:SetAllPoints(rel) self.points = { { "ALL", rel } } end
 function FrameMethods:SetSize(w, h) self.width, self.height = w, h end
 function FrameMethods:SetWidth(w) self.width = w end
@@ -366,6 +375,16 @@ function MakePlate(unit)
 	uf.CastBarsContainer = NewObject("Frame", uf)
 	uf.CastBarsContainer.castBar = NewObject("StatusBar", uf.CastBarsContainer)
 	uf.CastBarsContainer.castBar.Text = NewObject("FontString", uf.CastBarsContainer.castBar)
+	uf.CastBarsContainer.castBar.Icon = NewObject("Texture", uf.CastBarsContainer.castBar)
+	uf.CastBarsContainer.castBar.CastTargetNameText = NewObject("FontString", uf.CastBarsContainer.castBar)
+	-- the game's aura lists (Blizzard_NamePlates.xml): buffs left of the bar, debuffs above the name, CC right
+	uf.AurasFrame = NewObject("Frame", uf)
+	uf.AurasFrame.BuffListFrame = NewObject("Frame", uf.AurasFrame)
+	uf.AurasFrame.BuffListFrame:SetPoint("RIGHT", uf, "LEFT", -5, 0)
+	uf.AurasFrame.DebuffListFrame = NewObject("Frame", uf.AurasFrame)
+	uf.AurasFrame.DebuffListFrame:SetPoint("LEFT", uf.HealthBarsContainer, "LEFT", 0, 0)
+	uf.AurasFrame.CrowdControlListFrame = NewObject("Frame", uf.AurasFrame)
+	uf.AurasFrame.LossOfControlFrame = NewObject("Frame", uf.AurasFrame)
 	uf.PlayerLevelDiffFrame = NewObject("Frame", uf)
 	uf.PlayerLevelDiffFrame.width = 26
 	uf.PlayerLevelDiffFrame:SetPoint("LEFT", uf.HealthBarsContainer, "RIGHT", 2, 0)
@@ -373,6 +392,22 @@ function MakePlate(unit)
 	-- spanning bar + level frame; Modern = name inside the bar, ending where the health numbers start
 	rawset(uf, "UpdateAnchors", function(self)
 		self.layoutRuns = (self.layoutRuns or 0) + 1
+		-- cast bar text (ApplyStyleAndAnchoring), health numbers, the game's debuff row and CC (UpdateControlAnchors)
+		local cb = self.CastBarsContainer.castBar
+		cb.Text:ClearAllPoints(); cb.Text:SetPoint("LEFT", cb.Icon, "RIGHT", 2, 0)
+		local bar = self.HealthBarsContainer.healthBar
+		bar.LeftText:ClearAllPoints(); bar.RightText:ClearAllPoints(); bar.Text:ClearAllPoints()
+		if not self.showOnlyName then
+			bar.LeftText:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
+			bar.RightText:SetPoint("RIGHT", bar.LeftText, "LEFT", -2, 0)
+			bar.Text:SetPoint("RIGHT", bar.RightText, "LEFT", 2, 0)
+		end
+		if self.AurasFrame and self.AurasFrame.DebuffListFrame then
+			self.AurasFrame.DebuffListFrame:SetPoint("BOTTOM", self.name, "TOP", 0, 2)
+			self.AurasFrame.CrowdControlListFrame:ClearAllPoints()
+			self.AurasFrame.CrowdControlListFrame:SetPoint("LEFT", self.HealthBarsContainer, "RIGHT", 5, 0)
+			self.AurasFrame.LossOfControlFrame:SetPoint("LEFT", self.HealthBarsContainer, "RIGHT", 5, 0)
+		end
 		self.name:ClearAllPoints()
 		if self.showOnlyName then
 			-- name-only (friendly players with the game option on)
@@ -420,6 +455,8 @@ function Settings.RegisterVerticalLayoutSubcategory(parent, name)
 	local cat = { name = name, parent = parent, GetID = function() return 100 + #SETTINGS.pages end }
 	local lay = { inits = {}, AddInitializer = function(self, i) table.insert(self.inits, i) end }
 	table.insert(SETTINGS.pages, name)
+	SETTINGS.layouts = SETTINGS.layouts or {}
+	SETTINGS.layouts[name] = lay
 	return cat, lay
 end
 function Settings.RegisterProxySetting(cat, variable, varType, name, default, get, set)
@@ -428,12 +465,20 @@ function Settings.RegisterProxySetting(cat, variable, varType, name, default, ge
 	assert(not SETTINGS[variable], "duplicate setting " .. variable)
 	local s = { variable = variable, varType = varType, default = default, get = get, set = set, notified = 0, page = cat.name }
 	function s:NotifyUpdate() self.notified = self.notified + 1; self.get() end
+	-- like the game's Setting:SetValue: the setter only runs when the value changes
+	function s:SetValue(v) if self.get() ~= v then self.set(v) end end
 	SETTINGS[variable] = s
 	return s
 end
-function Settings.CreateCheckbox(cat, s) s.control = "checkbox" end
-function Settings.CreateSlider(cat, s, options) s.control = "slider"; s.options = options end
-function Settings.CreateDropdown(cat, s, getOptions) s.control = "dropdown"; s.getOptions = getOptions end
+local function NewInitializer(s)
+	local init = { setting = s }
+	function init:SetParentInitializer(parent, predicate) self.parent = parent; self.predicate = predicate end
+	s.init = init
+	return init
+end
+function Settings.CreateCheckbox(cat, s) s.control = "checkbox"; return NewInitializer(s) end
+function Settings.CreateSlider(cat, s, options) s.control = "slider"; s.options = options; return NewInitializer(s) end
+function Settings.CreateDropdown(cat, s, getOptions) s.control = "dropdown"; s.getOptions = getOptions; return NewInitializer(s) end
 function Settings.CreateSliderOptions(min, max, step)
 	return { min = min, max = max, step = step, SetLabelFormatter = function(self, t, f) self.formatter = f end }
 end
@@ -460,7 +505,7 @@ if DESCRIPTIONS_AVAILABLE then
 	end
 	local getTemplateInfo = C_XMLUtil.GetTemplateInfo
 	C_XMLUtil.GetTemplateInfo = function(name)
-		if name == "ForeverPlatesDescriptionTemplate" then return {} end
+		if name == "ForeverPlatesDescriptionTemplate" or name == "ForeverPlatesPreviewTemplate" then return {} end
 		return getTemplateInfo(name)
 	end
 end

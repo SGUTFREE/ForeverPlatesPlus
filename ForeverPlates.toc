@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: Forever Plates
-## Notes: Fine-tuning for the default WoW Forever nameplates without changing their look. Base preset + class presets.
-## Notes-ruRU: Тонкая настройка стандартных неймплейтов WoW Forever без изменения их вида. Базовый пресет + пресеты классов.
-## Version: 0.9.4
+## Notes: Fine-tuning for the default WoW Forever nameplates keeping their style. Base preset + class presets.
+## Notes-ruRU: Тонкая настройка стандартных неймплейтов WoW Forever в их родном стиле. Базовый пресет + пресеты классов.
+## Version: 0.10.0
 ## Author: Tony
 ## SavedVariablesPerCharacter: ForeverPlatesCharDB
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
@@ -11,6 +11,7 @@
 Locale.lua
 Presets.lua
 Core.lua
+Look.lua
 NativeOptions.lua
 Auras.lua
 KillZone.lua
@@ -20,5 +21,6 @@ Threat.lua
 CastBar.lua
 Fade.lua
 Quest.lua
+LookPreview.lua
 Options.lua
 Options.xml

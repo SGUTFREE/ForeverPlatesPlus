@@ -4,14 +4,15 @@ local _, ns = ...
 -- your active quests (kill, loot or talk targets).
 local M = ns.RegisterModule("Quest", {})
 
-local SIZE = 14
+local SIZE = 14 -- at 100% on the appearance page
 local ATLASES = { "QuestNormal", "smallquestbang", "questlog-questtypeicon-quest" }
 local FALLBACK_TEXTURE = "Interface\\GossipFrame\\AvailableQuestIcon"
 
 local markers = setmetatable({}, { __mode = "k" }) -- game unit frame -> our marker frame
 local refreshQueued = false
 
-local function PickAtlas()
+-- also used by the appearance page's sketch
+function ns.PickQuestAtlas()
 	if not (C_Texture and C_Texture.GetAtlasInfo) then
 		return nil
 	end
@@ -28,14 +29,12 @@ local function CreateMarker(unitFrame)
 		return nil
 	end
 	local marker = CreateFrame("Frame", nil, unitFrame)
-	marker:SetSize(SIZE, SIZE)
-	marker:SetPoint("RIGHT", container, "LEFT", -2, 0)
 	if marker.EnableMouse then
 		marker:EnableMouse(false)
 	end
 	local icon = marker:CreateTexture(nil, "OVERLAY")
 	icon:SetAllPoints()
-	local atlas = PickAtlas()
+	local atlas = ns.PickQuestAtlas()
 	if atlas then
 		icon:SetAtlas(atlas)
 	else
@@ -56,6 +55,16 @@ local function IsQuestUnit(unit)
 	return ok and ns.SafeBool(related) == true
 end
 
+-- size, opacity and place from the appearance page
+local function ApplyLook(marker, unitFrame)
+	local size = math.floor(SIZE * ns.LookScale("quest") + 0.5)
+	local dx, dy = ns.LookOffset("quest")
+	marker:SetSize(size, size)
+	marker:SetAlpha(ns.LookAlpha("quest"))
+	marker:ClearAllPoints()
+	marker:SetPoint("RIGHT", unitFrame.HealthBarsContainer, "LEFT", -2 + dx, dy)
+end
+
 local function Update(unit, unitFrame)
 	local marker = markers[unitFrame]
 	if not ns.Get("info.quest") or not IsQuestUnit(unit) then
@@ -71,6 +80,7 @@ local function Update(unit, unitFrame)
 		end
 		markers[unitFrame] = marker
 	end
+	ApplyLook(marker, unitFrame)
 	marker:Show()
 end
 
@@ -110,7 +120,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and key ~= "info.quest" then
+	if key and key ~= "info.quest" and not key:find("^look%.") then
 		return
 	end
 	UpdateAll()

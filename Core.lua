@@ -48,16 +48,53 @@ ns.CallModules = CallModules
 -- settings: overrides -> class preset -> BASE
 ------------------------------------------------------------------------
 
+-- settings renamed in 0.10 (the appearance page): keep what the player had chosen
+local function Migrate(overrides)
+	local function Move(old, new, convert)
+		local value = overrides[old]
+		if value ~= nil then
+			if overrides[new] == nil then
+				overrides[new] = convert and convert(value) or value
+			end
+			overrides[old] = nil
+		end
+	end
+	local nameScale = overrides["plates.nameScale"]
+	if nameScale ~= nil then
+		Move("plates.nameScale", "look.enemyName.scale")
+		overrides["look.friendName.scale"] = overrides["look.friendName.scale"] or nameScale
+	end
+	Move("plates.friendNameAlpha", "look.friendName.alpha")
+	local guild = overrides["plates.guild"]
+	if guild ~= nil then
+		if guild == "allies" or guild == "all" then
+			overrides["plates.guildFriends"] = true
+		end
+		if guild == "all" then
+			overrides["plates.guildEnemies"] = true
+		end
+		overrides["plates.guild"] = nil
+	end
+	for group, pixels in pairs({ purge = 20, mine = 22, dispel = 16 }) do
+		Move("auras." .. group .. "Size", "look." .. group .. ".scale", function(size)
+			return math.floor((tonumber(size) or pixels) / pixels * 20 + 0.5) * 5 -- percent, in steps of 5
+		end)
+	end
+end
+
 local function InitDB()
 	ForeverPlatesCharDB = ForeverPlatesCharDB or {}
 	local db = ForeverPlatesCharDB
-	db.version = 1
 	if type(db.preset) ~= "string" then
 		db.preset = "auto"
 	end
 	if type(db.overrides) ~= "table" then
 		db.overrides = {}
 	end
+	if (tonumber(db.version) or 1) < 2 then
+		Migrate(db.overrides)
+	end
+	db.version = 2
 	ns.db = db
 end
 
@@ -183,6 +220,25 @@ local function GetPlateUnitFrame(unit)
 end
 ns.GetPlateUnitFrame = GetPlateUnitFrame
 
+-- The game lays a plate out again (UpdateAnchors) when its style, size or name-only state changes,
+-- putting its parts back in their places: modules get OnPlateLayout to apply their changes again.
+local layoutHooked = setmetatable({}, { __mode = "k" })
+local plateUnit = setmetatable({}, { __mode = "k" }) -- unit frame -> unit token while active
+
+local function OnGameLayout(unitFrame)
+	local unit = plateUnit[unitFrame]
+	if unit and rawequal(ns.activePlates[unit], unitFrame) then
+		CallModules("OnPlateLayout", unit, unitFrame)
+	end
+end
+
+local function HookLayout(unitFrame)
+	if not layoutHooked[unitFrame] and type(unitFrame.UpdateAnchors) == "function" then
+		layoutHooked[unitFrame] = true
+		hooksecurefunc(unitFrame, "UpdateAnchors", OnGameLayout)
+	end
+end
+
 local function OnPlateAdded(unit, attempt)
 	local unitFrame = GetPlateUnitFrame(unit)
 	if not unitFrame then
@@ -195,6 +251,8 @@ local function OnPlateAdded(unit, attempt)
 		return
 	end
 	ns.activePlates[unit] = unitFrame
+	plateUnit[unitFrame] = unit
+	HookLayout(unitFrame)
 	CallModules("OnPlateAdded", unit, unitFrame)
 end
 
@@ -202,6 +260,7 @@ local function OnPlateRemoved(unit)
 	local unitFrame = ns.activePlates[unit]
 	ns.activePlates[unit] = nil
 	if unitFrame then
+		plateUnit[unitFrame] = nil
 		CallModules("OnPlateRemoved", unit, unitFrame)
 	end
 end

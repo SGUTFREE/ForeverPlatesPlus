@@ -8,14 +8,29 @@ local M = ns.RegisterModule("Auras", {})
 local HAS_CONTAINERS = C_XMLUtil and C_XMLUtil.GetTemplateInfo
 	and C_XMLUtil.GetTemplateInfo("CustomAuraContainerTemplate") and true or false
 
+-- size = icon pixels at 100% on the appearance page (the element has the group's name)
 local GROUPS = {
 	-- buffs on enemies that you can remove (Dispel Magic, Purge, Spellsteal...), with a blue frame
-	purge = { filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", sizeKey = "auras.purgeSize", maxKey = "auras.purgeMax", order = 1,
+	purge = { filter = "HELPFUL|RAID_PLAYER_DISPELLABLE", size = 20, maxKey = "auras.purgeMax", order = 1,
 		frame = { 0.25, 0.55, 1, 1 } },
 	-- all your debuffs on enemies (DoTs, slows, fears...)
-	mine = { filter = "HARMFUL|PLAYER", sizeKey = "auras.mineSize", maxKey = "auras.mineMax", order = 2 },
+	mine = { filter = "HARMFUL|PLAYER", size = 22, maxKey = "auras.mineMax", order = 2 },
 	-- debuffs you can dispel, on allies
-	dispel = { filter = "HARMFUL|RAID_PLAYER_DISPELLABLE", sizeKey = "auras.dispelSize", maxKey = "auras.dispelMax", order = 3 },
+	dispel = { filter = "HARMFUL|RAID_PLAYER_DISPELLABLE", size = 16, maxKey = "auras.dispelMax", order = 3 },
+}
+
+-- icon size in pixels for a group
+local function GroupSize(groupKey)
+	return math.floor(GROUPS[groupKey].size * ns.LookScale(groupKey) + 0.5)
+end
+
+-- the game's own aura lists on the plate (appearance elements gameBuffs, gameDebuffs, gameCC).
+-- The game sets the loss-of-control frame's scale itself, so only its opacity and place are ours.
+local GAME_LISTS = {
+	{ element = "gameBuffs", key = "BuffListFrame" },           -- left of the bar
+	{ element = "gameDebuffs", key = "DebuffListFrame" },       -- above the name
+	{ element = "gameCC", key = "CrowdControlListFrame" },      -- right of the bar
+	{ element = "gameCC", key = "LossOfControlFrame", noScale = true },
 }
 local GROUP_ORDER = { "purge", "mine", "dispel" }
 local FRAME_COLOR = { 0, 0, 0, 0.9 }
@@ -123,11 +138,12 @@ local function InitButton(container, groupKey, button)
 	button.fpTimer = timer
 
 	table.insert(container.fpButtons[groupKey], button)
-	StyleButton(button, ns.Get(GROUPS[groupKey].sizeKey))
+	StyleButton(button, GroupSize(groupKey))
+	button:SetAlpha(ns.LookAlpha(groupKey))
 end
 
 local function GroupLayout(groupKey)
-	local size = ns.Get(GROUPS[groupKey].sizeKey)
+	local size = GroupSize(groupKey)
 	return {
 		elementSpacing = SPACING,
 		lineSpacing = SPACING,
@@ -187,14 +203,39 @@ local function AnchorContainer(container, unitFrame)
 	local offset = padding
 	if not NameIsInsideBar() then
 		local setup = NamePlateSetupOptions
-		local nameHeight = ((setup and setup.healthBarFontHeight) or 14) * (ns.GetNameScale and ns.GetNameScale() or 1)
+		local nameHeight = ((setup and setup.healthBarFontHeight) or 14) * (ns.GetNameScale and ns.GetNameScale(unitFrame) or 1)
 		local nameSpacing = (setup and setup.healthBarToNameAboveSpacing) or 2
-		offset = offset + nameHeight + nameSpacing
+		-- the row follows the name when it is moved up or down
+		offset = offset + nameHeight + nameSpacing + (ns.GetNameOffsetY and ns.GetNameOffsetY(unitFrame) or 0)
 	end
 	-- a guild line above the name (HealthText) takes room as well
 	offset = offset + (ns.GetSubtitleHeight and ns.GetSubtitleHeight(unitFrame) or 0)
+	local dx, dy = ns.LookOffset("mine") -- shared by the three rows
 	container:ClearAllPoints()
-	container:SetPoint("BOTTOMLEFT", unitFrame.HealthBarsContainer, "TOPLEFT", 0, offset)
+	container:SetPoint("BOTTOMLEFT", unitFrame.HealthBarsContainer, "TOPLEFT", dx, offset + dy)
+end
+
+-- size, opacity and place of the game's own aura lists
+local function ApplyGameLook(unitFrame)
+	local auras = unitFrame.AurasFrame
+	if type(auras) ~= "table" then
+		return
+	end
+	for _, list in ipairs(GAME_LISTS) do
+		local frame = auras[list.key]
+		if type(frame) == "table" and frame.SetAlpha then
+			local scale = ns.LookScale(list.element)
+			local dx, dy = ns.LookOffset(list.element)
+			if not list.noScale then
+				ns.ApplyScale(frame, scale)
+			else
+				scale = 1
+			end
+			ns.ApplyAlpha(frame, ns.LookAlpha(list.element))
+			-- a scaled frame's offsets count in its own scale: divide, so a pixel stays a pixel
+			ns.PlaceRegion(frame, dx / scale, dy / scale)
+		end
+	end
 end
 
 function ns.ReanchorAuras(unitFrame)
@@ -221,6 +262,7 @@ local function Disable(container)
 end
 
 function M:OnPlateAdded(unit, unitFrame)
+	ApplyGameLook(unitFrame)
 	if not HAS_CONTAINERS or not unitFrame.HealthBarsContainer then
 		return
 	end
@@ -249,6 +291,12 @@ function M:OnPlateAdded(unit, unitFrame)
 	container:UpdateAllAuras() -- the same token (nameplate3) can come back for a different unit
 end
 
+-- the game re-anchors its lists (and the name) on a new layout
+function M:OnPlateLayout(_, unitFrame)
+	ApplyGameLook(unitFrame)
+	ns.ReanchorAuras(unitFrame)
+end
+
 function M:OnPlateRemoved(_, unitFrame)
 	local container = containers[unitFrame]
 	if container then
@@ -257,7 +305,13 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if not HAS_CONTAINERS or (key and not key:find("^auras%.") and key ~= "plates.nameScale") then
+	if key and not key:find("^auras%.") and not key:find("^look%.") then
+		return
+	end
+	if not HAS_CONTAINERS then
+		ns.ForEachPlate(function(_, unitFrame)
+			ApplyGameLook(unitFrame)
+		end)
 		return
 	end
 	for _, container in pairs(containers) do
@@ -265,9 +319,10 @@ function M:Apply(key)
 			local info = GROUPS[groupKey]
 			container:SetAuraGroupMaxFrameCount(groupKey, ns.Get(info.maxKey))
 			container:SetAuraGroupLayout(groupKey, GroupLayout(groupKey))
-			local size = ns.Get(info.sizeKey)
+			local size, alpha = GroupSize(groupKey), ns.LookAlpha(groupKey)
 			for _, button in ipairs(container.fpButtons[groupKey]) do
 				StyleButton(button, size)
+				button:SetAlpha(alpha)
 			end
 		end
 	end
