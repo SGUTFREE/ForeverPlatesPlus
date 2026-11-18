@@ -162,6 +162,10 @@ local function PutBackGamePoints(unitFrame, state)
 	for _, p in ipairs(state.points) do
 		name:SetPoint(p[1], p[2], p[3], p[4], p[5])
 	end
+	if state.justify then
+		name:SetJustifyH(state.justify)
+		state.justify = nil
+	end
 	state.ours = false
 end
 
@@ -203,10 +207,24 @@ local function ApplyName(unitFrame)
 	end
 	local dx, dy = state.dx or 0, state.dy or 0
 	local point, relativePoint, x, y
-	if state.want then
-		point, relativePoint, x, y = SinglePoint(unitFrame, state.points)
-	end
 	local name = unitFrame.name
+	if state.center then
+		-- an ally's pet shown as a name: centred over its (hidden) bar like the game's name-only plates,
+		-- whatever side the game's layout puts the name on
+		point, relativePoint, x, y = "BOTTOM", "TOP", 0, 2
+		if not state.justify then
+			state.justify = name:GetJustifyH()
+		end
+		name:SetJustifyH("CENTER")
+	else
+		if state.justify then
+			name:SetJustifyH(state.justify)
+			state.justify = nil
+		end
+		if state.want then
+			point, relativePoint, x, y = SinglePoint(unitFrame, state.points)
+		end
+	end
 	if point then
 		name:ClearAllPoints()
 		name:SetPoint(point, unitFrame.HealthBarsContainer, relativePoint, x + dx, y + dy)
@@ -231,19 +249,20 @@ local function OnGameLayout(unitFrame)
 		return
 	end
 	state.ours = false
+	state.justify = nil -- the game has just set its own
 	state.points = CapturePoints(unitFrame.name)
 	ApplyName(unitFrame)
 end
 
--- want: write the name in full; dx, dy: move it from the game's place
-local function SetNameLayout(unitFrame, want, dx, dy)
+-- want: write the name in full; dx, dy: move it from the game's place; center: centre it over the bar
+local function SetNameLayout(unitFrame, want, dx, dy, center)
 	if not unitFrame.name or not unitFrame.HealthBarsContainer then
 		return
 	end
 	dx, dy = dx or 0, dy or 0
 	local state = nameState[unitFrame]
 	if not state then
-		if not want and dx == 0 and dy == 0 then
+		if not want and not center and dx == 0 and dy == 0 then
 			return
 		end
 		state = {}
@@ -253,6 +272,7 @@ local function SetNameLayout(unitFrame, want, dx, dy)
 		state.points = CapturePoints(unitFrame.name)
 	end
 	state.want = want
+	state.center = center and true or false
 	state.dx, state.dy = dx, dy
 	ApplyName(unitFrame)
 end
@@ -684,10 +704,14 @@ local function SetSubtitle(unitFrame, text, color, element)
 		above = place == "above"
 	end
 	local dx, dy = ns.LookOffset(element)
+	-- lined up with the name's text: a name written from the left edge gets its line from the left edge too
+	local justify = name:GetJustifyH()
+	local side = (justify == "LEFT" or justify == "RIGHT") and justify or ""
+	line:SetJustifyH(side == "" and "CENTER" or side)
 	if above then
-		line:SetPoint("BOTTOM", name, "TOP", dx, SUBTITLE_GAP + dy)
+		line:SetPoint("BOTTOM" .. side, name, "TOP" .. side, dx, SUBTITLE_GAP + dy)
 	else
-		line:SetPoint("TOP", name, "BOTTOM", dx, -SUBTITLE_GAP + dy)
+		line:SetPoint("TOP" .. side, name, "BOTTOM" .. side, dx, -SUBTITLE_GAP + dy)
 	end
 	line:Show()
 	local height = above and math.max(0, size * scale + SUBTITLE_GAP + dy) or nil
@@ -761,7 +785,8 @@ local function Update(unit, unitFrame)
 	else
 		wantFull = ns.Get("plates.enemyFullNames")
 	end
-	SetNameLayout(unitFrame, wantFull and true or false, ns.LookOffset(nameElement))
+	local nameDx, nameDy = ns.LookOffset(nameElement)
+	SetNameLayout(unitFrame, wantFull and true or false, nameDx, nameDy, isPet)
 
 	local pet = isPet and PetInfo(unit) or nil
 	SetPetNameOnly(unitFrame, pet)
@@ -942,7 +967,7 @@ function M:OnPlateRemoved(_, unitFrame)
 	-- unit frames are reused: give everything back before another unit takes this frame
 	frameUnit[unitFrame] = nil
 	modeByFrame[unitFrame] = nil
-	SetNameLayout(unitFrame, false, 0, 0)
+	SetNameLayout(unitFrame, false, 0, 0, false)
 	SetNameAlpha(unitFrame, nil)
 	SetNameScale(unitFrame, nil)
 	SetPetNameOnly(unitFrame, nil)

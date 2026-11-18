@@ -273,6 +273,8 @@ check(abs(v[0] - 0.53) < 1e-9, "declined owner name (Артроза → Артр
 sub7 = ns.GetSubtitleLine(pet7)
 check(sub7 is not None and sub7.shown and sub7.text == "Артроз", "pet's owner written under its name")
 check(sub7.points[1][1] == "TOP" and sub7.points[1][3] == "BOTTOM" and abs(sub7.textColor[1] - 0.53) < 1e-9, "owner line under the name, in the pet's colour")
+pp7 = points("nameplate7")
+check(len(pp7) == 1 and pp7[0][0] == "BOTTOM" and pp7[0][2] == "TOP" and pp7[0][3] == 0 and pp7[0][4] == 2 and pet7.name.justify == "CENTER", "pet name centred over its hidden bar (not over bar + level frame), like ally names")
 ns.Set("plates.petOwner", False)
 check(not sub7.shown, "owner line can be turned off")
 ns.Set("plates.petOwner", True)
@@ -291,6 +293,7 @@ check(abs(v[0] - 0x33 / 255) < 1e-9 and abs(v[2] - 0x99 / 255) < 1e-9, "pet colo
 ns.Set("look.petName.color", "class")
 L.execute('UNITS.party1 = nil')
 G.FireEvent("NAME_PLATE_UNIT_REMOVED", "nameplate7")
+check(len(points("nameplate7")) == 2, "removed pet plate: the game's name points back")
 check(G.SETTINGS["FOREVERPLATES_LOOK_FRIENDNAME_ALPHA"] is not None and G.SETTINGS["FOREVERPLATES_LOOK_PETNAME_ALPHA"] is not None, "opacity sliders for allies and pets")
 # the game switches the ally to name-only and lays it out again
 uf("nameplate3").showOnlyName = True
@@ -822,6 +825,11 @@ pn2 = lambda u: [list(p.values()) for p in pts2(u).values()]
 check(pn2("nameplate2") == [["LEFT", "LEFT", 4, 0]], "Modern, ally (numbers hidden): name pinned only on the left, grows freely")
 ns2.Set("plates.friendHealth", "both")
 check(len(pn2("nameplate2")) == 2, "Modern, ally with numbers shown: the game's layout (name stops before the numbers)")
+L2.execute('UNITS.nameplate2.guild = "Орда"')
+ns2.Set("plates.guildFriends", True)
+gl = ns2.GetSubtitleLine(G2.PLATES["nameplate2"].UnitFrame)
+check(gl.shown and gl.points[1][1] == "BOTTOMLEFT" and gl.points[1][3] == "TOPLEFT" and gl.justify == "LEFT", "name written from the left (Modern style): its guild line starts at the same left edge")
+ns2.Set("plates.guildFriends", False)
 ns2.Set("plates.friendHealth", "none")
 check(len(pn2("nameplate2")) == 1, "numbers hidden again: name free again")
 check(len(pn2("nameplate1")) == 1, "Modern, enemy normally (no numbers): name free")
