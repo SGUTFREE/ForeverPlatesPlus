@@ -6,7 +6,7 @@
 
 1. **Name:** `ForeverPlates`
 2. **Summary** (одна строка, видна в поиске, на самой странице её нет), на двух языках:
-   `Fine-tuned default Forever nameplates: your debuffs, execute mark, cast timer, unit frame text. / Тонкая настройка стандартных неймплейтов Forever: ваши дебаффы, черта добивания, таймер каста, текст на фреймах.`
+   `The default Forever nameplates in the game's own style, with customization the built-in settings can't offer. / Стандартные неймплейты Forever в родном стиле игры — с настройками, которых нет в стандартном меню.`
    Если форма не примет такую длину — только английская половина.
 3. **Avatar:** `media/logo.png` (1024×1024).
 4. **Description:** включить режим Markdown и вставить всё из блока «Описание» ниже (английский сверху, русский под ним).
