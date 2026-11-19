@@ -4,6 +4,7 @@
 ## Notes-ruRU: Тонкая настройка стандартных неймплейтов WoW Forever в их родном стиле и текст на фреймах игрока и цели. Базовый пресет + пресеты классов.
 ## Version: 0.13.0
 ## Author: Tony
+## X-Curse-Project-ID: 1816355
 ## SavedVariablesPerCharacter: ForeverPlatesPlusCharDB
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
 ## AddonCompartmentFunc: ForeverPlatesPlus_OnAddonCompartmentClick
