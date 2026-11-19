@@ -173,7 +173,7 @@ end
 -- build: one set of regions per kind, inside one settings list frame
 ------------------------------------------------------------------------
 
-local function BuildEnemy(canvas, parts)
+local function BuildEnemy(canvas, parts, text)
 	local bar = NewBar(canvas, BAR_WIDTH, BAR_HEIGHT, { 0.8, 0.1, 0.1 }, 0.7)
 	bar:SetPoint("TOPLEFT", canvas, "TOPLEFT", BAR_X, -84)
 	parts.bar = bar
@@ -198,8 +198,8 @@ local function BuildEnemy(canvas, parts)
 	castIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 	parts.castIcon = castIcon
 
-	parts.enemyName = NewText(canvas, L.SKETCH_ENEMY, NAME_FONTS)
-	parts.enemyGuild = NewText(canvas, L.SKETCH_GUILD, NAME_FONTS)
+	parts.enemyName = NewText(text, L.SKETCH_ENEMY, NAME_FONTS)
+	parts.enemyGuild = NewText(text, L.SKETCH_GUILD, NAME_FONTS)
 	parts.health = NewText(bar, "12.3" .. L.ABBR_THOUSAND .. "  70%", SMALL_FONTS)
 	parts.castText = NewText(cast, L.SKETCH_SPELL, SMALL_FONTS)
 	parts.castTimer = NewText(cast, "1.4", SMALL_FONTS)
@@ -225,23 +225,23 @@ local function BuildEnemy(canvas, parts)
 	parts.quest = quest
 end
 
-local function BuildAlly(canvas, parts)
+local function BuildAlly(canvas, parts, text)
 	local bar = NewBar(canvas, BAR_WIDTH, BAR_HEIGHT, { 0.1, 0.75, 0.1 }, 0.85)
 	bar:SetPoint("TOPLEFT", canvas, "TOPLEFT", BAR_X, -66)
 	parts.bar = bar
 	parts.health = NewText(bar, "2.9" .. L.ABBR_THOUSAND .. "  85%", SMALL_FONTS)
-	parts.allyName = NewText(canvas, L.SKETCH_ALLY, NAME_FONTS)
-	parts.allyGuild = NewText(canvas, L.SKETCH_GUILD, NAME_FONTS)
+	parts.allyName = NewText(text, L.SKETCH_ALLY, NAME_FONTS)
+	parts.allyGuild = NewText(text, L.SKETCH_GUILD, NAME_FONTS)
 	parts.dispel = NewRow(canvas, { { "Interface\\Icons\\Spell_Shadow_CurseOfTounges", PURPLE } })
 	parts.friendGame = NewRow(canvas, { { "Interface\\Icons\\Spell_Nature_Sleep", GREY } })
 end
 
-local function BuildPet(canvas, parts)
+local function BuildPet(canvas, parts, text)
 	local bar = NewBar(canvas, BAR_WIDTH, BAR_HEIGHT, { 0.1, 0.75, 0.1 }, 1)
 	bar:SetPoint("TOPLEFT", canvas, "TOPLEFT", BAR_X, -46)
 	parts.bar = bar
-	parts.petName = NewText(canvas, L.SKETCH_PET, NAME_FONTS)
-	parts.petOwner = NewText(canvas, L.SKETCH_ALLY, NAME_FONTS)
+	parts.petName = NewText(text, L.SKETCH_PET, NAME_FONTS)
+	parts.petOwner = NewText(text, L.SKETCH_ALLY, NAME_FONTS)
 end
 
 -- unit frames: yours, your target's, your target's target, each a health and a mana bar
@@ -298,9 +298,13 @@ local function BuildKind(self, kind)
 	local back = canvas:CreateTexture(nil, "BACKGROUND")
 	back:SetPoint("TOPLEFT", 4, 0)
 	back:SetPoint("BOTTOMRIGHT", -24, 0)
-	back:SetColorTexture(0, 0, 0, 0.35)
+	back:SetColorTexture(0, 0, 0, 0.6) -- the settings window lets the world show through; keep the sketch readable
 	sketch.canvas = canvas
-	BUILDERS[kind](canvas, sketch.parts)
+	-- names and their second lines go on a layer above the bars: a name inside the bar must not hide under it
+	local text = CreateFrame("Frame", nil, canvas)
+	text:SetAllPoints(canvas)
+	text:SetFrameLevel(canvas:GetFrameLevel() + 5)
+	BUILDERS[kind](canvas, sketch.parts, text)
 
 	-- a button over every part; the bar's button lies under the parts drawn on the bar
 	for index, entry in ipairs(REGIONS[kind]) do

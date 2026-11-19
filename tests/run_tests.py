@@ -946,6 +946,7 @@ check(ns2.db.parts["enemy"] == "guild" and "Currently off." in enemy_sketch.hint
 check(abs(enemy_sketch.parts.enemyGuild.alpha - 0.85 * 0.25) < 1e-9, "parts turned off are drawn faint")
 ns2.Set("look.enemyName.y", 6)
 en = enemy_sketch.parts.enemyName
+check(en.parent.GetFrameLevel(en.parent) > enemy_sketch.parts.bar.GetFrameLevel(enemy_sketch.parts.bar), "sketch: the name is drawn on a layer above the bar (inside the bar it stays visible)")
 check(en.points[1][1] == "LEFT" and en.points[1][5] == 6, "the sketch follows the game's style (Modern: name inside the bar) and the settings (6 px up)")
 ns2.Set("look.enemyName.where", "above")
 check(en.points[1][1] == "BOTTOM" and en.points[1][5] == 8, "name above the bar in the sketch")
