@@ -8,3 +8,4 @@ ignore:
   - tests
   - media
   - CURSEFORGE.md
+  - TODO.md
