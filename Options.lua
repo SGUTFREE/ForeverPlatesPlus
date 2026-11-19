@@ -80,9 +80,15 @@ local function ResetPart(kind, part)
 	ns.Refresh()
 end
 
+-- while set, every control built after it shows only when it returns true (the Friendly page's master switch)
+local pageGate
+
 -- initializer belongs to the part being built (and shows only when extra() is true as well)
 local function InPart(initializer, extra)
 	if initializer and initializer.AddShownPredicate then
+		if pageGate then
+			initializer:AddShownPredicate(pageGate)
+		end
 		if pageKind and partKey then
 			local kind, part = pageKind, partKey
 			initializer:AddShownPredicate(function()
@@ -341,7 +347,7 @@ local SKETCH_TEMPLATE = "ForeverPlatesPlusPreviewTemplate"
 -- a page for one kind of nameplate (or the unit frames): description, sketch, list of parts
 local function NameplatePage(kind, name, about, parts, sketchTitle, partLabel)
 	category, layout = Settings.RegisterVerticalLayoutSubcategory(mainCategory, name)
-	pageKind, partKey = nil, nil
+	pageKind, partKey, pageGate = nil, nil, nil
 	partKeys[kind], partLabels[kind] = {}, {}
 	for _, part in ipairs(parts) do
 		partKeys[kind][part[1]] = {}
@@ -637,6 +643,11 @@ local function BuildAlly()
 	})
 
 	Part("plate")
+	Checkbox("plates.friends", L.FRIENDS_ON, L.FRIENDS_ON_TT)
+	-- off: friendly plates are the game's, so the rest of the page has nothing to set
+	pageGate = function()
+		return ns.Get("plates.friends") ~= false
+	end
 	Dropdown("native.friendNamesOnly", L.FRIEND_NAMES_ONLY, L.FRIEND_NAMES_ONLY_TT, {
 		{ "never", L.NAMES_ONLY_NEVER },
 		{ "instance", L.NAMES_ONLY_INSTANCE },
@@ -698,6 +709,7 @@ local function BuildPet()
 
 	Part("name")
 	NameColor("petName", {
+		{ "friend", L.COLOR_LIKE_FRIENDS },
 		{ "class", L.COLOR_OWNER_CLASS },
 		{ "white", L.COLOR_WHITE },
 		{ "custom", L.COLOR_CUSTOM },

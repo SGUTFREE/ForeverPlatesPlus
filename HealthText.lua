@@ -441,17 +441,27 @@ local function TooltipLines(unit)
 	return lines
 end
 
--- players the owner can be: you, your group, allies whose plates are shown
+-- Forever players can have a surname: UnitName gives it as a second value, shown after a separator
+local function SurnameSeparator()
+	local consts = Constants and Constants.CharacterNameSeparatorConsts
+	return consts and consts.CHARACTERNAME_SURNAME_SEPARATOR or " "
+end
+
+-- players the owner can be: you, your group, allies and enemy players whose plates are shown
 local function OwnerCandidates()
 	local candidates = {}
 	local function Add(unit)
 		if not UnitExists(unit) then
 			return
 		end
-		local name = UnitName(unit)
+		local name, surname = UnitName(unit)
 		local _, class = UnitClass(unit)
 		if type(name) == "string" and not ns.IsSecret(name) and not ns.IsSecret(class) and class then
-			table.insert(candidates, { name = name, class = class })
+			local full = name
+			if type(surname) == "string" and not ns.IsSecret(surname) and surname ~= "" then
+				full = name .. SurnameSeparator() .. surname
+			end
+			table.insert(candidates, { name = name, full = full, class = class })
 		end
 	end
 	Add("player")
@@ -464,7 +474,7 @@ local function OwnerCandidates()
 		end
 	end
 	for unit in pairs(ns.activePlates) do
-		if ns.SafeBool(UnitIsPlayer(unit)) and ns.GetUnitKind(unit) == "friendlyPlayer" then
+		if ns.SafeBool(UnitIsPlayer(unit)) then
 			Add(unit)
 		end
 	end
@@ -480,7 +490,7 @@ local function Stem(name)
 	return name:match("^(.*)[%z\1-\127\194-\244][\128-\191]*$")
 end
 
--- the pet's owner (class, name), found by the owner's name in the pet's tooltip
+-- the pet's owner (class, full name with the surname), found by the owner's name in the pet's tooltip
 local function PetOwner(unit)
 	local lines = TooltipLines(unit)
 	if #lines == 0 then
@@ -490,7 +500,7 @@ local function PetOwner(unit)
 	for _, text in ipairs(lines) do
 		for _, candidate in ipairs(candidates) do
 			if text:find(candidate.name, 1, true) then
-				return candidate.class, candidate.name
+				return candidate.class, candidate.full
 			end
 		end
 	end
@@ -498,7 +508,7 @@ local function PetOwner(unit)
 		for _, candidate in ipairs(candidates) do
 			local stem = Stem(candidate.name)
 			if stem and text:find(stem, 1, true) then
-				return candidate.class, candidate.name
+				return candidate.class, candidate.full
 			end
 		end
 	end
@@ -526,10 +536,10 @@ end
 -- { color = { r, g, b }, owner = name|nil } for a pet shown as a name only
 local function PetInfo(unit)
 	local class, owner = PetOwner(unit)
-	local mode = ns.LookColorMode("petName")
+	local mode, rgbElement = ns.PetColorMode()
 	local color
 	if mode == "custom" then
-		color = { ns.LookRGB("petName") }
+		color = { ns.LookRGB(rgbElement) }
 	elseif mode == "class" then
 		color = ClassColor(class) or WHITE
 	else
@@ -543,6 +553,7 @@ local function IsAllyPet(unit)
 		or ns.SafeBool(UnitIsUnit(unit, "pet")) == true
 		or ns.SafeBool(UnitIsMinion and UnitIsMinion(unit)) == true
 end
+ns.IsAllyPet = IsAllyPet
 
 -- info: { color, owner } for the name, or nil to show the plate normally again (the colour is set with the name's)
 local function SetPetNameOnly(unitFrame, info)
@@ -626,10 +637,15 @@ local function NameColor(unit, element, pet)
 		return WHITE
 	elseif mode == "custom" then
 		return { ns.LookRGB(element) }
-	elseif mode == "class" and element == "enemyName" and ns.SafeBool(UnitIsPlayer(unit)) then
-		local _, class = UnitClass(unit)
-		if class and not ns.IsSecret(class) then
-			return ClassColor(class)
+	elseif mode == "class" and element == "enemyName" then
+		if ns.SafeBool(UnitIsPlayer(unit)) then
+			local _, class = UnitClass(unit)
+			if class and not ns.IsSecret(class) then
+				return ClassColor(class)
+			end
+		elseif ns.SafeBool(UnitIsOtherPlayersPet and UnitIsOtherPlayersPet(unit)) == true then
+			-- an enemy player's pet: the owner's class colour, once the owner's plate is around
+			return ClassColor((PetOwner(unit)))
 		end
 	end
 	return nil
@@ -811,7 +827,31 @@ local function NumbersMode(unit, unitFrame)
 	return ns.Get("enemyText.idle"), false
 end
 
+local leftToGame = setmetatable({}, { __mode = "k" }) -- unit frame -> true while the plate is the game's own
+
+-- give the plate back to the game: name, numbers and the second line as the game draws them
+local function Release(unitFrame)
+	modeByFrame[unitFrame] = nil
+	SetNameLayout(unitFrame, false, 0, 0, false)
+	SetNameAlpha(unitFrame, nil)
+	SetNameScale(unitFrame, nil)
+	SetPetNameOnly(unitFrame, nil)
+	SetNameColor(unitFrame, nil)
+	lookByFrame[unitFrame] = nil
+	SetSubtitle(unitFrame, nil)
+	ShowNumbers(unitFrame, "both", false)
+	hidden[unitFrame] = nil
+end
+
 local function Update(unit, unitFrame)
+	if ns.LeftToGame(unit) then
+		if not leftToGame[unitFrame] then
+			leftToGame[unitFrame] = true
+			Release(unitFrame)
+		end
+		return
+	end
+	leftToGame[unitFrame] = nil
 	local mode, isFriendly = NumbersMode(unit, unitFrame)
 	local numbersLook = isFriendly and "friendHealth" or "enemyHealth"
 	modeByFrame[unitFrame] = mode
@@ -1008,16 +1048,8 @@ end
 function M:OnPlateRemoved(_, unitFrame)
 	-- unit frames are reused: give everything back before another unit takes this frame
 	frameUnit[unitFrame] = nil
-	modeByFrame[unitFrame] = nil
-	SetNameLayout(unitFrame, false, 0, 0, false)
-	SetNameAlpha(unitFrame, nil)
-	SetNameScale(unitFrame, nil)
-	SetPetNameOnly(unitFrame, nil)
-	SetNameColor(unitFrame, nil)
-	lookByFrame[unitFrame] = nil
-	SetSubtitle(unitFrame, nil)
-	ShowNumbers(unitFrame, "both", false)
-	hidden[unitFrame] = nil
+	leftToGame[unitFrame] = nil
+	Release(unitFrame)
 end
 
 function M:OnUnitEvent(event, unit, unitFrame)

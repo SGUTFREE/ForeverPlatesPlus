@@ -35,6 +35,7 @@ local GAME_LISTS = {
 	{ element = "gameCC", key = "LossOfControlFrame", noScale = true },
 }
 local plateIsFriend = setmetatable({}, { __mode = "k" }) -- unit frame -> true on allies
+local plateLeft = setmetatable({}, { __mode = "k" }) -- unit frame -> true: a friendly plate left to the game
 local GROUP_ORDER = { "purge", "mine", "dispel" }
 local FRAME_COLOR = { 0, 0, 0, 0.9 }
 
@@ -260,14 +261,18 @@ local function ApplyGameLook(unitFrame)
 		local frame = auras[list.key]
 		if type(frame) == "table" and frame.SetAlpha then
 			local element = plateIsFriend[unitFrame] and "friendGame" or list.element
-			local scale = ns.LookScale(element)
-			local dx, dy = ns.LookOffset(element)
+			local left = plateLeft[unitFrame]
+			local scale = left and 1 or ns.LookScale(element)
+			local dx, dy = 0, 0
+			if not left then
+				dx, dy = ns.LookOffset(element)
+			end
 			if not list.noScale then
 				ns.ApplyScale(frame, scale)
 			else
 				scale = 1
 			end
-			ns.ApplyAlpha(frame, ns.LookAlpha(element))
+			ns.ApplyAlpha(frame, left and 1 or ns.LookAlpha(element))
 			-- a scaled frame's offsets count in its own scale: divide, so a pixel stays a pixel
 			ns.PlaceRegion(frame, dx / scale, dy / scale)
 		end
@@ -300,11 +305,15 @@ end
 function M:OnPlateAdded(unit, unitFrame)
 	local kind = ns.GetUnitKind(unit)
 	plateIsFriend[unitFrame] = (kind == "friendlyPlayer" or kind == "friendlyNpc") or nil
+	plateLeft[unitFrame] = ns.LeftToGame(unit) or nil
 	ApplyGameLook(unitFrame)
 	if not HAS_CONTAINERS or not unitFrame.HealthBarsContainer then
 		return
 	end
 	local wanted = WantedGroups(unit)
+	if plateLeft[unitFrame] then
+		wanted = {}
+	end
 	local container = containers[unitFrame]
 
 	if not (wanted.purge or wanted.mine or wanted.dispel) then
@@ -348,7 +357,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^auras%.") and not key:find("^look%.") then
+	if key and not key:find("^auras%.") and not key:find("^look%.") and key ~= "plates.friends" and key ~= "plates.petNamesOnly" then
 		return
 	end
 	if not HAS_CONTAINERS then

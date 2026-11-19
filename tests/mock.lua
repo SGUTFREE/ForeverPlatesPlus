@@ -340,7 +340,7 @@ function FrameMethods:SetStatusBarColor(r, g, b, a) self.barColor = { r, g, b, a
 function FrameMethods:SetTextScale(v) self.textScale = v end
 function FrameMethods:SetTextColor(r, g, b) self.textColor = { r, g, b } end
 function GetGuildInfo(u) local d = UNITS[u]; if d then return d.guild end end
-function UnitName(u) local d = UNITS[u]; return d and d.name end
+function UnitName(u) local d = UNITS[u]; if d then return d.name, d.surname end end
 function IsInRaid() return false end
 UNITNAME_TITLE_PET = "Питомец %s"
 UNITNAME_TITLE_MINION = "Прислужник %s"

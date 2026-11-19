@@ -181,12 +181,18 @@ end
 
 -- size, opacity and place of the spell name and the timer (appearance page); every plate, the game's
 -- cast bar text is re-anchored by the game on each layout, so this runs again after it
+local leftToGame = setmetatable({}, { __mode = "k" }) -- unit frame -> true: a friendly plate left to the game
+
 local function ApplyLook(unitFrame)
 	local castBar = GetCastBar(unitFrame)
 	if not castBar then
 		return
 	end
+	local left = leftToGame[unitFrame]
 	local scale, alpha = ns.LookScale("castText"), ns.LookAlpha("castText")
+	if left then
+		scale, alpha = 1, 1
+	end
 	for _, text in ipairs({ castBar.Text, castBar.CastTargetNameText }) do
 		if type(text) == "table" then
 			ns.ApplyTextScale(text, scale)
@@ -194,7 +200,11 @@ local function ApplyLook(unitFrame)
 		end
 	end
 	if type(castBar.Text) == "table" then
-		ns.PlaceRegion(castBar.Text, ns.LookOffset("castText"))
+		if left then
+			ns.PlaceRegion(castBar.Text, 0, 0)
+		else
+			ns.PlaceRegion(castBar.Text, ns.LookOffset("castText"))
+		end
 	end
 	local extra = extras[unitFrame]
 	if extra then
@@ -249,6 +259,7 @@ local function SetUpExtras(unit, unitFrame)
 end
 
 function M:OnPlateAdded(unit, unitFrame)
+	leftToGame[unitFrame] = ns.LeftToGame(unit) or nil
 	SetUpExtras(unit, unitFrame)
 	ApplyLook(unitFrame)
 end
@@ -268,7 +279,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^cast%.") and not key:find("^look%.") then
+	if key and not key:find("^cast%.") and not key:find("^look%.") and key ~= "plates.friends" and key ~= "plates.petNamesOnly" then
 		return
 	end
 	ns.ForEachPlate(function(unit, unitFrame)

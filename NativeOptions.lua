@@ -140,12 +140,22 @@ local function ApplyThreat()
 	end
 end
 
+-- "Change friendly nameplates" off: the game's own options for friendly plates go back to the game's
+-- defaults and the addon stops setting them
+local FRIEND_CVARS = { "nameplateShowOnlyNameForFriendlyPlayerUnits", "nameplateUseClassColorForFriendlyPlayerUnitNames",
+	"nameplateShowFriendlyNpcs", "nameplateFriendlyPlayerAuraDisplay" }
+local function FriendsChanged()
+	return ns.Get("plates.friends") ~= false
+end
+
 local function ApplyStacking()
 	local enemies = ns.Get("native.stackEnemies")
 	local friends = ns.Get("native.stackFriends")
 	if CVarExists("nameplateStackingTypes") then
 		SetBit("nameplateStackingTypes", EnumValue("NamePlateStackType", "Enemy", 1), enemies)
-		SetBit("nameplateStackingTypes", EnumValue("NamePlateStackType", "Friendly", 2), friends)
+		if FriendsChanged() then
+			SetBit("nameplateStackingTypes", EnumValue("NamePlateStackType", "Friendly", 2), friends)
+		end
 	else
 		-- older nameplate system: one switch for everything
 		SetBool("nameplateMotion", enemies)
@@ -153,8 +163,12 @@ local function ApplyStacking()
 end
 
 local function ApplyAll()
+	local friends = FriendsChanged()
 	for _, info in ipairs(BITS) do
 		local value = ns.Get(info.key)
+		if info.cvar == "nameplateFriendlyPlayerAuraDisplay" and not friends then
+			value = nil
+		end
 		if value ~= nil then
 			SetBit(info.cvar, EnumValue(info.enum, info.field, info.fallback), value)
 		end
@@ -175,16 +189,22 @@ local function ApplyAll()
 	ApplyStacking()
 	SetBool("nameplateShowAll", ns.Get("native.alwaysShow"))
 	SetBool("nameplateShowOffscreen", ns.Get("native.offscreen"))
-	SetBool("nameplateShowFriendlyNpcs", ns.Get("native.friendlyNpcs"))
 	SetNumber("nameplateOccludedAlphaMult", ns.Get("native.losFade"))
 
-	-- In dungeons and raids the game doesn't let addons touch ally nameplates, so numbers there can only
-	-- go away with the game's own "name only" option. Re-applied on every loading screen.
-	local namesOnly = ns.Get("native.friendNamesOnly")
 	local inInstance = IsInInstance and IsInInstance() and true or false
-	SetBool("nameplateShowOnlyNameForFriendlyPlayerUnits", namesOnly == "always" or (namesOnly == "instance" and inInstance))
-	-- ally names in class colour: the game's own option, so it also works in dungeons and raids
-	SetBool("nameplateUseClassColorForFriendlyPlayerUnitNames", ns.LookColorMode("friendName") == "class")
+	if friends then
+		SetBool("nameplateShowFriendlyNpcs", ns.Get("native.friendlyNpcs"))
+		-- In dungeons and raids the game doesn't let addons touch ally nameplates, so numbers there can only
+		-- go away with the game's own "name only" option. Re-applied on every loading screen.
+		local namesOnly = ns.Get("native.friendNamesOnly")
+		SetBool("nameplateShowOnlyNameForFriendlyPlayerUnits", namesOnly == "always" or (namesOnly == "instance" and inInstance))
+		-- ally names in class colour: the game's own option, so it also works in dungeons and raids
+		SetBool("nameplateUseClassColorForFriendlyPlayerUnitNames", ns.LookColorMode("friendName") == "class")
+	else
+		for _, name in ipairs(FRIEND_CVARS) do
+			SetToDefault(name)
+		end
+	end
 
 	-- Allies' pets: instead of the game's big floating labels, nameplates that the addon turns into a
 	-- white name (see HealthText). In dungeons and raids the addon can't touch ally plates, so pets get
@@ -203,7 +223,7 @@ local function ApplyAll()
 end
 
 function M:Apply(key)
-	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" and key ~= "look.friendName.color" then
+	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" and key ~= "plates.friends" and key ~= "look.friendName.color" then
 		return
 	end
 	if not ns.Get("native.manage") then

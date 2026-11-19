@@ -86,6 +86,20 @@ function ns.LookColorMode(element)
 	return ns.Get("look." .. element .. ".color") or "game"
 end
 
+-- the colour of allies' pets' names and where a custom colour is taken from: "friend" follows the
+-- allies' name colour (white stays white, class colour becomes the owner's class colour)
+function ns.PetColorMode()
+	local mode = ns.LookColorMode("petName")
+	if mode == "friend" then
+		local friend = ns.LookColorMode("friendName")
+		if friend == "class" or friend == "custom" then
+			return friend, "friendName"
+		end
+		return "white", "friendName"
+	end
+	return mode, "petName"
+end
+
 -- a colour stored as "AARRGGBB" (the settings colour swatch writes that) -> r, g, b
 function ns.HexToRGB(hex)
 	if type(hex) ~= "string" or not hex:match("^%x%x%x%x%x%x%x%x$") then

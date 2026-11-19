@@ -293,6 +293,22 @@ function ns.GetUnitKind(unit)
 	return isPlayer and "friendlyPlayer" or "friendlyNpc"
 end
 
+-- Friendly plates drawn exactly as the game draws them: the Friendly page's "Change friendly nameplates"
+-- is off. Allies' pets have their own switch on their page, so a pet shown as a name stays ours.
+function ns.LeftToGame(unit)
+	if ns.Get("plates.friends") ~= false then
+		return false
+	end
+	local kind = ns.GetUnitKind(unit)
+	if kind == "friendlyPlayer" then
+		return true
+	end
+	if kind == "friendlyNpc" then
+		return not (ns.Get("plates.petNamesOnly") and ns.IsAllyPet and ns.IsAllyPet(unit))
+	end
+	return false
+end
+
 -- the game's unit frame on a nameplate we are allowed to touch (forbidden plates return nil)
 local function GetPlateUnitFrame(unit)
 	local plate = C_NamePlate.GetNamePlateForUnit(unit)

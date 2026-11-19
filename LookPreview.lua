@@ -87,6 +87,9 @@ local IS_ON = {
 }
 
 function ns.IsPartOn(kind, part)
+	if kind == "ally" and part ~= "plate" and ns.Get("plates.friends") == false then
+		return false -- friendly plates left to the game
+	end
 	local check = IS_ON[kind] and IS_ON[kind][part]
 	return not check or check()
 end
@@ -177,9 +180,11 @@ local function BuildEnemy(canvas, parts, text)
 	local bar = NewBar(canvas, BAR_WIDTH, BAR_HEIGHT, { 0.8, 0.1, 0.1 }, 0.7)
 	bar:SetPoint("TOPLEFT", canvas, "TOPLEFT", BAR_X, -84)
 	parts.bar = bar
+	-- the aggro glow sits on the right of the bar's top edge: the aura rows above the bar start on the
+	-- left and would cover it (and its click area)
 	local aggro = bar:CreateTexture(nil, "OVERLAY")
-	aggro:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, 0)
-	aggro:SetSize(BAR_WIDTH * 0.6, 3)
+	aggro:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", 0, 0)
+	aggro:SetSize(BAR_WIDTH * 0.3, 4)
 	aggro:SetColorTexture(1, 0.85, 0.1, 0.9)
 	parts.aggro = aggro
 	local killzone = bar:CreateTexture(nil, "OVERLAY")
@@ -312,8 +317,15 @@ local function BuildKind(self, kind)
 		if region then
 			local button = CreateFrame("Button", nil, canvas)
 			button:SetFrameLevel(canvas:GetFrameLevel() + 10 + index)
-			button:SetPoint("TOPLEFT", region, "TOPLEFT", -2, 2)
-			button:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", 2, -2)
+			-- thin parts (the aggro glow, the execute mark) get a bigger area to click
+			local padX, padY = 2, 2
+			if part == "aggro" then
+				padX, padY = 2, 6
+			elseif part == "killzone" then
+				padX, padY = 4, 2
+			end
+			button:SetPoint("TOPLEFT", region, "TOPLEFT", -padX, padY)
+			button:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", padX, -padY)
 			local selected = button:CreateTexture(nil, "BACKGROUND")
 			selected:SetAllPoints()
 			selected:SetColorTexture(1, 0.82, 0, 0.3)
@@ -362,9 +374,12 @@ end
 ------------------------------------------------------------------------
 
 local function NameColor(element)
-	local mode = ns.LookColorMode(element)
+	local mode, rgbElement = ns.LookColorMode(element), element
+	if element == "petName" then
+		mode, rgbElement = ns.PetColorMode()
+	end
 	if mode == "custom" then
-		return { ns.LookRGB(element) }
+		return { ns.LookRGB(rgbElement) }
 	elseif mode == "white" then
 		return WHITE
 	end
