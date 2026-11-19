@@ -147,6 +147,24 @@ function FrameMethods:SetAllPoints(rel) self.points = { { "ALL", rel } } end
 function FrameMethods:SetSize(w, h) self.width, self.height = w, h end
 function FrameMethods:SetWidth(w) self.width = w end
 function FrameMethods:SetColorTexture(r, g, b, a) self.color = { r, g, b, a == nil and 1 or a } end
+-- animation groups: only whether they play
+function FrameMethods:CreateAnimationGroup()
+	local group = { playing = false, owner = self }
+	function group:SetLooping(v) self.looping = v end
+	function group:CreateAnimation(kind)
+		local anim = { kind = kind }
+		function anim:SetFromAlpha(v) self.from = v end
+		function anim:SetToAlpha(v) self.to = v end
+		function anim:SetDuration(v) self.duration = v end
+		function anim:SetSmoothing(v) self.smoothing = v end
+		return anim
+	end
+	function group:Play() self.playing = true end
+	function group:Stop() self.playing = false end
+	function group:IsPlaying() return self.playing end
+	self.fpAnimGroup = group
+	return group
+end
 function FrameMethods:SetWordWrap(v) self.wordWrap = v end
 function FrameMethods:CanWordWrap() if self.wordWrap == nil then return true end return self.wordWrap end
 function FrameMethods:GetWidth() return self.width or 140 end

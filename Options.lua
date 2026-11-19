@@ -485,7 +485,6 @@ local function BuildEnemy()
 		{ "name", L.PART_NAME },
 		{ "guild", L.PART_GUILD },
 		{ "health", L.PART_HEALTH },
-		{ "aggro", L.PART_AGGRO },
 		{ "killzone", L.PART_KILLZONE },
 		{ "cast", L.PART_CAST },
 		{ "castText", L.PART_CAST_TEXT },
@@ -514,6 +513,17 @@ local function BuildEnemy()
 	Checkbox("auras.purge", L.PART_PURGE, L.PURGE_TT)
 	Checkbox("killzone.enabled", L.KZ_ENABLED, L.KZ_ENABLED_TT)
 	Checkbox("threat.warn", L.THREAT_WARN, L.THREAT_WARN_TT)
+	local function WarnOn()
+		return ns.Get("threat.warn")
+	end
+	Slider("threat.warnFrom", L.THREAT_WARN_FROM, L.THREAT_WARN_FROM_TT, 30, 95, 5, Percent, WarnOn)
+	Checkbox("threat.warnPulse", L.THREAT_PULSE, L.THREAT_PULSE_TT, WarnOn)
+	Dropdown("native.threat", L.THREAT, L.THREAT_TT, {
+		{ "none", L.THREAT_NONE },
+		{ "progressive", L.THREAT_PROGRESSIVE },
+		{ "flash", L.THREAT_FLASH },
+		{ "bar", L.THREAT_BAR },
+	})
 	Checkbox("cast.timer", L.CAST_TIMER_SHOW, L.CAST_TIMER_TT)
 	Checkbox("plates.guildEnemies", L.GUILD_ENEMIES, L.GUILD_TT)
 	Checkbox("info.quest", L.QUEST_SHOW, L.QUEST_MARK_TT)
@@ -566,18 +576,6 @@ local function BuildEnemy()
 		return ns.Get("health.format") == "short"
 	end)
 	LookControls("enemyHealth")
-	ResetButton()
-
-	Part("aggro")
-	Dropdown("native.threat", L.THREAT, L.THREAT_TT, {
-		{ "none", L.THREAT_NONE },
-		{ "progressive", L.THREAT_PROGRESSIVE },
-		{ "flash", L.THREAT_FLASH },
-		{ "bar", L.THREAT_BAR },
-	})
-	Slider("threat.warnFrom", L.THREAT_WARN_FROM, L.THREAT_WARN_FROM_TT, 30, 95, 5, Percent, function()
-		return ns.Get("threat.warn")
-	end)
 	ResetButton()
 
 	Part("killzone")

@@ -39,8 +39,35 @@ local function CreateBar(unitFrame)
 		bar:SetHeight(2)
 		bar:SetStatusBarColor(COLOR[1], COLOR[2], COLOR[3], 0.9)
 	end
+	-- a slow pulse (threat.warnPulse), so the glow catches the eye
+	local pulse = bar.CreateAnimationGroup and bar:CreateAnimationGroup()
+	local fade = pulse and pulse.CreateAnimation and pulse:CreateAnimation("Alpha")
+	if fade then
+		pulse:SetLooping("BOUNCE")
+		fade:SetFromAlpha(1)
+		fade:SetToAlpha(0.35)
+		fade:SetDuration(0.7)
+		if fade.SetSmoothing then
+			fade:SetSmoothing("IN_OUT")
+		end
+		bar.fpPulse = pulse
+	end
 	bar:Hide()
 	return bar
+end
+
+-- start or stop the pulse with the option
+local function SetPulse(bar, on)
+	local pulse = bar.fpPulse
+	if not pulse then
+		return
+	end
+	if on and not pulse:IsPlaying() then
+		pulse:Play()
+	elseif not on and pulse:IsPlaying() then
+		pulse:Stop()
+		bar:SetAlpha(1)
+	end
 end
 
 local function IsTank()
@@ -92,6 +119,7 @@ local function Update(unit, unitFrame)
 	bar:SetMinMaxValues(ns.Get("threat.warnFrom") or 70, 100)
 	bar:SetValue(scaled)
 	bar:Show()
+	SetPulse(bar, ns.Get("threat.warnPulse") and true or false)
 end
 
 local function UpdateAll()

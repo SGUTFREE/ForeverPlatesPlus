@@ -29,7 +29,7 @@ ns.SKETCH_HEIGHT = { enemy = 200, ally = 150, pet = 124, frames = 156 }
 -- sketch region -> part of the page (the regions are built in Build)
 local REGIONS = {
 	enemy = {
-		{ "bar", "plate" }, { "aggro", "aggro" }, { "killzone", "killzone" }, { "health", "health" },
+		{ "bar", "plate" }, { "killzone", "killzone" }, { "health", "health" },
 		{ "enemyName", "name" }, { "enemyGuild", "guild" }, { "cast", "cast" }, { "castText", "castText" },
 		{ "castTimer", "castTimer" }, { "purge", "purge" }, { "mine", "mine" }, { "gameDebuffs", "gameDebuffs" },
 		{ "gameBuffs", "gameBuffs" }, { "gameCC", "gameCC" }, { "quest", "quest" },
@@ -59,7 +59,6 @@ local IS_ON = {
 	enemy = {
 		guild = function() return Any("plates.guildEnemies") end,
 		health = function() return ns.Get("enemyText.idle") ~= "none" or ns.Get("enemyText.mouseover") ~= "none" or ns.Get("enemyText.target") ~= "none" end,
-		aggro = function() return Any("threat.warn") or ns.Get("native.threat") ~= "none" end,
 		killzone = function() return Any("killzone.enabled") end,
 		castText = function() return Any("native.castName") end,
 		castTimer = function() return Any("cast.timer") end,
@@ -187,12 +186,32 @@ local function BuildEnemy(canvas, parts, text)
 	local bar = NewBar(canvas, BAR_WIDTH, BAR_HEIGHT, { 0.8, 0.1, 0.1 }, 0.7)
 	bar:SetPoint("TOPLEFT", canvas, "TOPLEFT", BAR_X, -84)
 	parts.bar = bar
-	-- the aggro glow sits on the right of the bar's top edge: the aura rows above the bar start on the
-	-- left and would cover it (and its click area)
+	-- the early aggro warning as the game draws it: a glow along the top of the bar, pulsing like the
+	-- real one (its settings are in the page's main block, so it is not a part to click)
 	local aggro = bar:CreateTexture(nil, "OVERLAY")
-	aggro:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", 0, 0)
-	aggro:SetSize(BAR_WIDTH * 0.3, 4)
-	aggro:SetColorTexture(1, 0.85, 0.1, 0.9)
+	aggro:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, -2)
+	aggro:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", 0, -2)
+	aggro:SetHeight(8)
+	local atlas = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-Nameplates-Aggro-Flare")
+	if atlas and aggro.SetAtlas then
+		aggro:SetAtlas("UI-HUD-Nameplates-Aggro-Flare")
+		if aggro.SetBlendMode then
+			aggro:SetBlendMode("ADD")
+		end
+		aggro:SetVertexColor(1, 0.82, 0.25, 1)
+	else
+		aggro:SetHeight(3)
+		aggro:SetColorTexture(1, 0.82, 0.25, 0.9)
+	end
+	local pulse = aggro.CreateAnimationGroup and aggro:CreateAnimationGroup()
+	local fade = pulse and pulse.CreateAnimation and pulse:CreateAnimation("Alpha")
+	if fade then
+		pulse:SetLooping("BOUNCE")
+		fade:SetFromAlpha(1)
+		fade:SetToAlpha(0.35)
+		fade:SetDuration(0.7)
+		parts.aggroPulse = pulse
+	end
 	parts.aggro = aggro
 	local killzone = bar:CreateTexture(nil, "OVERLAY")
 	killzone:SetPoint("TOPLEFT", bar, "TOPLEFT", BAR_WIDTH * 0.3, 0)
@@ -324,11 +343,9 @@ local function BuildKind(self, kind)
 		if region then
 			local button = CreateFrame("Button", nil, canvas)
 			button:SetFrameLevel(canvas:GetFrameLevel() + 10 + index)
-			-- thin parts (the aggro glow, the execute mark) get a bigger area to click
+			-- thin parts (the execute mark) get a bigger area to click
 			local padX, padY = 2, 2
-			if part == "aggro" then
-				padX, padY = 2, 6
-			elseif part == "killzone" then
+			if part == "killzone" then
 				padX, padY = 4, 2
 			end
 			button:SetPoint("TOPLEFT", region, "TOPLEFT", -padX, padY)
@@ -471,7 +488,19 @@ local function DrawEnemy(parts)
 	PlaceText(parts.health, "enemyHealth", Faint("enemy", "health"), "RIGHT", parts.bar, "RIGHT", -4, 0)
 	PlaceText(parts.castText, "castText", Faint("enemy", "castText"), "LEFT", parts.castIcon, "RIGHT", 2, 0)
 	PlaceText(parts.castTimer, "castTimer", Faint("enemy", "castTimer"), "LEFT", parts.cast, "RIGHT", 3, 0)
-	parts.aggro:SetAlpha(Faint("enemy", "aggro"))
+	-- the warning glow: pulsing like in the game, faint when the warning is off
+	local warnOn = ns.Get("threat.warn") and true or false
+	local pulse = parts.aggroPulse
+	if pulse then
+		if warnOn and ns.Get("threat.warnPulse") then
+			if not pulse:IsPlaying() then
+				pulse:Play()
+			end
+		elseif pulse:IsPlaying() then
+			pulse:Stop()
+		end
+	end
+	parts.aggro:SetAlpha(warnOn and 1 or OFF_ALPHA)
 	local r, g, b = ns.HexToRGB(ns.Get("killzone.rgb"))
 	local markAlpha = (tonumber(ns.Get("killzone.alpha")) or 85) / 100
 	parts.killzone:SetColorTexture(r, g, b, 1)

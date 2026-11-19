@@ -58,6 +58,7 @@ ns.BASE = {
 	["native.threat"]         = "progressive", -- none | progressive | flash | bar
 	["threat.warn"]           = true,   -- early aggro warning (glow grows before you pull)
 	["threat.warnFrom"]       = 70,     -- start at this % of the threat that pulls the mob
+	["threat.warnPulse"]     = true,  -- the early warning glow pulses so it catches the eye
 
 	-- game aura rows; game debuffs are replaced by our "My debuffs" row
 	["native.npcBuffs"]       = true,

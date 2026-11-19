@@ -398,6 +398,11 @@ G.IN_GROUP = True
 G.FireEvent("GROUP_ROSTER_UPDATE")
 t1 = thr("nameplate1")
 check(t1 is not None and t1.shown and t1.min == 70 and t1.max == 100 and t1.value == 80, "in a group: glow range 70..100, threat 80% -> a third lit")
+check(t1.fpPulse is not None and t1.fpPulse.playing, "the warning glow pulses")
+ns.Set("threat.warnPulse", False)
+check(not t1.fpPulse.playing and t1.shown, "pulse off: a steady glow")
+ns.Set("threat.warnPulse", True)
+check(t1.fpPulse.playing, "pulse on again")
 L.execute("THREAT.nameplate1 = SECRET_VALUE")
 G.FireEvent("UNIT_THREAT_LIST_UPDATE", "nameplate1")
 check(G.issecretvalue(t1.value) and t1.shown, "secret threat goes straight to the bar")
@@ -691,6 +696,11 @@ check(shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES") and shows("FOREVERPLATESPLU
 check(shows("FOREVERPLATESPLUS_NATIVE_ENEMYMINIONS") and not shows("FOREVERPLATESPLUS_LOOK_ENEMYNAME_SCALE"), "'whole nameplate': only its own options under the sketch")
 pe.set("quest")
 check(shows("FOREVERPLATESPLUS_LOOK_QUEST_SCALE") and not shows("FOREVERPLATESPLUS_NATIVE_ENEMYMINIONS") and shows("FOREVERPLATESPLUS_INFO_QUEST"), "quest marker part: its size and place; showing it is in the main block")
+check(shows("FOREVERPLATESPLUS_NATIVE_THREAT") and shows("FOREVERPLATESPLUS_THREAT_WARN") and shows("FOREVERPLATESPLUS_THREAT_WARNPULSE"),
+      "aggro: the game's display, the early warning and its pulse all in the main block")
+ns.Set("threat.warn", False)
+check(not shows("FOREVERPLATESPLUS_THREAT_WARNPULSE") and not shows("FOREVERPLATESPLUS_THREAT_WARNFROM"), "warning off: its threshold and pulse hidden")
+ns.Set("threat.warn", True)
 ns.Set("plates.enemies", False)
 check(shows("FOREVERPLATESPLUS_PLATES_ENEMIES") and not shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES") and not shows("FOREVERPLATESPLUS_LOOK_QUEST_SCALE"), "enemy plates left to the game: only the switch is listed")
 ns.Set("plates.enemies", True)
@@ -997,6 +1007,8 @@ sketch_frame = L2.eval("function() local f = CreateFrame('Frame'); f.Title = f:C
 G2.ForeverPlatesPlusPreviewMixin.Init(sketch_frame, inits[si[0]])
 enemy_sketch = sketch_frame.fpSketches["enemy"]
 check(enemy_sketch is not None and sketch_frame.headerInit is not None and enemy_sketch.hint.text.startswith("The whole nameplate:"), "sketch drawn, the selected part explained under it: " + str(enemy_sketch.hint.text)[:60])
+check(enemy_sketch.parts.aggroPulse is not None and enemy_sketch.parts.aggroPulse.playing and not [x for x in enemy_sketch.buttons.values() if x.part == "aggro"],
+      "sketch: the early warning glows and pulses above the bar, like in the game (its settings are in the main block)")
 guild_button = [x for x in enemy_sketch.buttons.values() if x.part == "guild"]
 check(len(guild_button) == 1, "the guild is a clickable part of the enemy sketch")
 guild_button[0].scripts["OnClick"](guild_button[0])

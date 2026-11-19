@@ -8,7 +8,7 @@
 - Friendly pets' names now follow the friendly names' color by default: white names give white pets, class-colored names give pets their owner's class color.
 - Enemy players' pets take their owner's class color with **Class color (players and their pets)**.
 - The owner line under a pet shows the whole name, surname included.
-- The early aggro warning is now in Main on the Enemy page; the game's aggro display is under the yellow line at the top right of the health bar on the sketch.
+- Aggro settings are all in Main on the Enemy page: the early warning with its threshold, the game's aggro display, and a new **Pulse** option. The early warning glow now gently pulses so it's easier to notice; the sketch shows it the same way.
 - The **Nameplate range** tooltip now says it applies to all nameplates.
 
 **Русский**
@@ -19,5 +19,5 @@
 - Имена питомцев союзников по умолчанию в цвет имён союзников: белые имена — белые питомцы, цвет класса — цвет класса хозяина.
 - Питомцы вражеских игроков при цвете **«Цвет класса (игроки и их питомцы)»** — в цвет класса хозяина.
 - Подпись хозяина под питомцем — имя целиком, с фамилией.
-- Ранний сигнал агро — в «Основном» страницы «Враг»; подсветка агро игры — по клику на жёлтую черту справа над полосой здоровья на схеме.
+- Всё про агро — в «Основном» страницы «Враг»: предупреждение заранее с порогом, подсветка агро игры и новая галочка **«Пульсировать»**. Свечение предупреждения теперь мягко пульсирует, его легче заметить; на схеме оно показано так же.
 - Подсказка **«Дальность появления»** уточнена: настройка действует на все неймплейты.
