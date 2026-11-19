@@ -7,13 +7,31 @@ local L = ns.L
 -- The threshold can follow the spell's own description, so it grows with spell power.
 local M = ns.RegisterModule("KillZone", {})
 
-local COLOR = { 0.58, 0.25, 1.0 } -- shadow purple
 local TEXTURE = "Interface\\Buttons\\WHITE8X8"
--- kill zone: solid; crit zone (kills only on a crit): faint continuation behind it
+-- colour, opacity and width of the mark come from the settings (a thin dark line by default);
+-- these are the shares of that opacity: kill zone solid, crit zone (kills only on a crit) fainter
 local STYLE = {
-	kill = { fill = 0.32, edge = 0.95, edgeWidth = 2, level = 2 },
-	crit = { fill = 0.13, edge = 0.5, edgeWidth = 1, level = 1 },
+	kill = { fill = 0.35, edge = 1, widthAdd = 0, level = 2 },
+	crit = { fill = 0.15, edge = 0.5, widthAdd = 0, level = 1 },
 }
+
+local function MarkColor()
+	local r, g, b = ns.HexToRGB(ns.Get("killzone.rgb"))
+	local alpha = math.max(0, math.min(100, tonumber(ns.Get("killzone.alpha")) or 85)) / 100
+	local width = math.max(1, math.min(4, math.floor((tonumber(ns.Get("killzone.width")) or 1) + 0.5)))
+	return r, g, b, alpha, width
+end
+
+-- colour and width of a zone's line and tint
+local function StyleBar(bar, tinted)
+	local style = STYLE[bar.fpRole]
+	local r, g, b, alpha, width = MarkColor()
+	bar:SetStatusBarColor(r, g, b, tinted and alpha * style.fill or 0)
+	if bar.fpEdge then
+		bar.fpEdge:SetColorTexture(r, g, b, alpha * style.edge)
+		bar.fpEdge:SetWidth(width + style.widthAdd)
+	end
+end
 
 local zones = setmetatable({}, { __mode = "k" }) -- game unit frame -> { kill = status bar, crit = status bar }
 local inCombat = false
@@ -151,7 +169,6 @@ local function CreateBar(healthBar, role)
 	bar:SetAllPoints(healthBar)
 	bar:SetFrameLevel(healthBar:GetFrameLevel() + style.level)
 	bar:SetStatusBarTexture(TEXTURE)
-	bar:SetStatusBarColor(COLOR[1], COLOR[2], COLOR[3], style.fill)
 	if bar.EnableMouse then
 		bar:EnableMouse(false)
 	end
@@ -159,10 +176,10 @@ local function CreateBar(healthBar, role)
 	-- line where the zone ends
 	local fill = bar:GetStatusBarTexture()
 	local edge = bar:CreateTexture(nil, "OVERLAY")
-	edge:SetColorTexture(COLOR[1], COLOR[2], COLOR[3], style.edge)
-	edge:SetWidth(style.edgeWidth)
 	edge:SetPoint("TOPRIGHT", fill, "TOPRIGHT", 0, 0)
 	edge:SetPoint("BOTTOMRIGHT", fill, "BOTTOMRIGHT", 0, 0)
+	bar.fpEdge = edge
+	StyleBar(bar, false)
 
 	bar:Hide()
 	return bar
@@ -239,8 +256,8 @@ local function Update(unit, unitFrame)
 
 	-- "line": only the mark where the zone ends; "zone": the part of the bar is tinted as well
 	local tinted = ns.Get("killzone.style") == "zone"
-	zone.kill:SetStatusBarColor(COLOR[1], COLOR[2], COLOR[3], tinted and STYLE.kill.fill or 0)
-	zone.crit:SetStatusBarColor(COLOR[1], COLOR[2], COLOR[3], tinted and STYLE.crit.fill or 0)
+	StyleBar(zone.kill, tinted)
+	StyleBar(zone.crit, tinted)
 
 	zone.kill:SetMinMaxValues(minValue, maxValue)
 	zone.kill:SetValue(threshold)

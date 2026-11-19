@@ -1,7 +1,7 @@
 local _, ns = ...
 local L = ns.L
 
--- Settings panel: Esc > Options > AddOns > Forever Plates (or /fpl, or the minimap button).
+-- Settings panel: Esc > Options > AddOns > Forever Plates+ (or /fpl, or the minimap button).
 --
 -- The main page holds the preset and what concerns every plate. Then one page per kind of nameplate:
 -- Враг, Союзник, Питомец союзника. Each starts with a sketch of that nameplate; clicking a part of it
@@ -338,8 +338,8 @@ end
 
 local SKETCH_TEMPLATE = "ForeverPlatesPreviewTemplate"
 
--- a page for one kind of nameplate: description, sketch, list of parts
-local function NameplatePage(kind, name, about, parts)
+-- a page for one kind of nameplate (or the unit frames): description, sketch, list of parts
+local function NameplatePage(kind, name, about, parts, sketchTitle, partLabel)
 	category, layout = Settings.RegisterVerticalLayoutSubcategory(mainCategory, name)
 	pageKind, partKey = nil, nil
 	partKeys[kind], partLabels[kind] = {}, {}
@@ -351,7 +351,7 @@ local function NameplatePage(kind, name, about, parts)
 
 	if ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
 		and C_XMLUtil.GetTemplateInfo(SKETCH_TEMPLATE) and Settings.CreateElementInitializer then
-		local initializer = Settings.CreateElementInitializer(SKETCH_TEMPLATE, { name = L.SKETCH_TITLE, tooltip = L.SKETCH_TT, kind = kind })
+		local initializer = Settings.CreateElementInitializer(SKETCH_TEMPLATE, { name = sketchTitle or L.SKETCH_TITLE, tooltip = L.SKETCH_TT, kind = kind })
 		local height = ns.SKETCH_HEIGHT and ns.SKETCH_HEIGHT[kind] or 160
 		initializer.GetExtent = function()
 			return height
@@ -359,7 +359,7 @@ local function NameplatePage(kind, name, about, parts)
 		layout:AddInitializer(initializer)
 	end
 
-	local _, setting = Dropdown("ui.part." .. kind, L.PART, L.PART_TT, parts, nil,
+	local _, setting = Dropdown("ui.part." .. kind, partLabel or L.PART, L.PART_TT, parts, nil,
 		function()
 			return ns.GetPart(kind)
 		end,
@@ -424,6 +424,12 @@ local function BuildMain()
 	end
 end
 
+local NAME_WHERE = {
+	{ "game", L.NAME_WHERE_GAME },
+	{ "above", L.NAME_WHERE_ABOVE },
+	{ "inside", L.NAME_WHERE_INSIDE },
+}
+
 local NUMBERS = {
 	{ "none", L.NUM_NONE },
 	{ "value", L.NUM_VALUE },
@@ -478,6 +484,7 @@ local function BuildEnemy()
 		{ "white", L.COLOR_WHITE },
 		{ "custom", L.COLOR_CUSTOM },
 	}, L.ENEMY_COLOR_TT)
+	Dropdown("look.enemyName.where", L.NAME_WHERE, L.NAME_WHERE_TT, NAME_WHERE)
 	Checkbox("plates.enemyFullNames", L.FULL_NAMES, L.ENEMY_FULL_NAMES_TT)
 	LookControls("enemyName")
 	ResetButton()
@@ -547,6 +554,11 @@ local function BuildEnemy()
 	Slider("killzone.critMult", L.KZ_CRIT_MULT, L.KZ_CRIT_MULT_TT, 120, 300, 5, Percent, function()
 		return KillZoneOn() and ns.Get("killzone.crit")
 	end)
+	ColorSwatch("killzone.rgb", L.KZ_COLOR, L.KZ_COLOR_TT, KillZoneOn)
+	Slider("killzone.width", L.KZ_WIDTH, nil, 1, 4, 1, function(value)
+		return L.PIXELS:format(math.floor(value + 0.5))
+	end, KillZoneOn)
+	Slider("killzone.alpha", L.LOOK_ALPHA, L.KZ_ALPHA_TT, 10, 100, 5, Percent, KillZoneOn)
 	ResetButton()
 
 	Part("cast")
@@ -632,6 +644,9 @@ local function BuildAlly()
 		{ "white", L.COLOR_WHITE },
 		{ "custom", L.COLOR_CUSTOM },
 	}, L.FRIEND_COLOR_TT)
+	Dropdown("look.friendName.where", L.NAME_WHERE, L.NAME_WHERE_ALLY_TT, NAME_WHERE, function()
+		return ns.Get("native.friendNamesOnly") ~= "always"
+	end)
 	Checkbox("plates.friendFullNames", L.FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
 	LookControls("friendName")
 	ResetButton()
@@ -688,11 +703,63 @@ local function BuildPet()
 	ResetButton()
 end
 
+local FRAME_TEXT = {
+	{ "game", L.FT_GAME },
+	{ "none", L.FT_NONE },
+	{ "current", L.FT_CURRENT },
+	{ "percent", L.FT_PERCENT },
+	{ "currentPercent", L.FT_CURRENT_PERCENT },
+	{ "currentMax", L.FT_CURRENT_MAX },
+	{ "currentMaxPercent", L.FT_CURRENT_MAX_PERCENT },
+	{ "missing", L.FT_MISSING },
+	{ "missingPercent", L.FT_MISSING_PERCENT },
+	{ "split", L.FT_SPLIT },
+}
+
+local function BuildFrames()
+	NameplatePage("frames", L.PAGE_FRAMES, L.ABOUT_FRAMES, {
+		{ "plate", L.PART_FRAMES_ALL },
+		{ "player", L.PART_FRAME_PLAYER },
+		{ "target", L.PART_FRAME_TARGET },
+		{ "tot", L.PART_FRAME_TOT },
+	}, L.SKETCH_TITLE_FRAMES, L.PART_FRAME)
+
+	Part("plate")
+	Checkbox("frames.enabled", L.FRAMES_ENABLED, L.FRAMES_ENABLED_TT)
+	Dropdown("frames.number", L.FRAMES_NUMBER, nil, {
+		{ "short", L.HEALTH_FORMAT_SHORT },
+		{ "full", L.HEALTH_FORMAT_FULL },
+		{ "game", L.HEALTH_FORMAT_GAME },
+	})
+	Slider("frames.decimals", L.HEALTH_DECIMALS, L.HEALTH_DECIMALS_TT, 0, 2, 1, nil, function()
+		return ns.Get("frames.number") == "short"
+	end)
+	ResetButton()
+
+	for _, frameKey in ipairs(ns.UNIT_FRAMES) do
+		Part(frameKey)
+		local prefix = "frames." .. frameKey .. "."
+		Dropdown(prefix .. "health", L.FRAMES_HEALTH, L.FRAMES_TEXT_TT, FRAME_TEXT)
+		Dropdown(prefix .. "mana", L.FRAMES_MANA, L.FRAMES_TEXT_TT, FRAME_TEXT)
+		Dropdown(prefix .. "when", L.FRAMES_WHEN, nil, {
+			{ "always", L.WHEN_ALWAYS },
+			{ "combat", L.WHEN_COMBAT },
+			{ "noCombat", L.WHEN_NO_COMBAT },
+		})
+		Slider(prefix .. "scale", L.FRAMES_SCALE, nil, 50, 200, 5, Percent)
+		Button(L.FRAMES_COPY, L.BUTTON_APPLY, function()
+			ns.CopyFrameText(frameKey)
+		end, L.FRAMES_COPY_TT)
+		ResetButton()
+	end
+end
+
 local function Build()
 	BuildMain()
 	BuildEnemy()
 	BuildAlly()
 	BuildPet()
+	BuildFrames()
 	pageKind, partKey = nil, nil
 	Settings.RegisterAddOnCategory(mainCategory)
 end

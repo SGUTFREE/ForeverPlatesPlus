@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- Quest marker: a small "!" to the left of the health bar on mobs and NPCs that belong to one of
--- your active quests (kill, loot or talk targets).
+-- your active quests (kill, loot or talk targets). It takes its place in the game's line of icons left
+-- of the bar (after the raid mark and the elite dragon); the game's buffs move over for it (Auras).
 local M = ns.RegisterModule("Quest", {})
 
 local SIZE = 14 -- at 100% on the appearance page
@@ -62,14 +63,28 @@ local function ApplyLook(marker, unitFrame)
 	marker:SetSize(size, size)
 	marker:SetAlpha(ns.LookAlpha("quest"))
 	marker:ClearAllPoints()
-	marker:SetPoint("RIGHT", unitFrame.HealthBarsContainer, "LEFT", -2 + dx, dy)
+	local classification = unitFrame.ClassificationFrame
+	if type(classification) == "table" then
+		-- hidden icons of that line take no room in the game's layout, so this is right next to the bar
+		-- when there is no raid mark or elite dragon
+		marker:SetPoint("RIGHT", classification, "LEFT", -3 + dx, dy)
+	else
+		marker:SetPoint("RIGHT", unitFrame.HealthBarsContainer, "LEFT", -2 + dx, dy)
+	end
+end
+
+function ns.GetQuestMarker(unitFrame)
+	return markers[unitFrame]
 end
 
 local function Update(unit, unitFrame)
 	local marker = markers[unitFrame]
 	if not ns.Get("info.quest") or not IsQuestUnit(unit) then
-		if marker then
+		if marker and marker:IsShown() then
 			marker:Hide()
+			if ns.PlaceGameAuras then
+				ns.PlaceGameAuras(unitFrame) -- the game's buffs take the marker's place
+			end
 		end
 		return
 	end
@@ -82,6 +97,9 @@ local function Update(unit, unitFrame)
 	end
 	ApplyLook(marker, unitFrame)
 	marker:Show()
+	if ns.PlaceGameAuras then
+		ns.PlaceGameAuras(unitFrame)
+	end
 end
 
 local function UpdateAll()
@@ -114,8 +132,11 @@ end
 
 function M:OnPlateRemoved(_, unitFrame)
 	local marker = markers[unitFrame]
-	if marker then
+	if marker and marker:IsShown() then
 		marker:Hide()
+		if ns.PlaceGameAuras then
+			ns.PlaceGameAuras(unitFrame)
+		end
 	end
 end
 

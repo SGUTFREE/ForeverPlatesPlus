@@ -375,9 +375,9 @@ check(G.SETTINGS["FOREVERPLATES_THREAT_WARN"] is not None and G.SETTINGS["FOREVE
 first = G.SETTINGS.layout.inits[1]
 check(first.header == ns.L.ABOUT_PAGE and first.tooltip == ns.L.ABOUT_MAIN, "no description template: page text goes into a header tooltip")
 pages = list(G.SETTINGS.pages.values())
-check(pages == ["Враг", "Союзник", "Питомец союзника"], "settings split by nameplate: " + ", ".join(pages))
+check(pages == ["Враг", "Союзник", "Питомец союзника", "Фреймы"], "settings split by nameplate, then frames: " + ", ".join(pages))
 S = G.SETTINGS
-check(S["FOREVERPLATES_PROFILE_PRESET"].page == "Forever Plates" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "Forever Plates" and S["FOREVERPLATES_NATIVE_ALWAYSSHOW"].page == "Forever Plates", "preset, general and all-plates options on the main page")
+check(S["FOREVERPLATES_PROFILE_PRESET"].page == "Forever Plates+" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "Forever Plates+" and S["FOREVERPLATES_NATIVE_ALWAYSSHOW"].page == "Forever Plates+", "preset, general and all-plates options on the main page")
 for k in ("ENEMYTEXT_IDLE", "INFO_QUEST", "CAST_TIMER", "CAST_INTERRUPTREADY", "AURAS_PURGE", "NATIVE_NPCBUFFS", "FADE_RANGE", "NATIVE_STACKENEMIES", "THREAT_WARN", "KILLZONE_ENABLED", "NATIVE_MAXDISTANCE"):
     check(S["FOREVERPLATES_" + k].page == "Враг", f"{k} on the Enemy page")
 check(S["FOREVERPLATES_NATIVE_FRIENDNAMESONLY"].page == "Союзник" and S["FOREVERPLATES_AURAS_DISPEL"].page == "Союзник", "ally look and dispel row on the Ally page")
@@ -392,7 +392,12 @@ G.FireEvent("PLAYER_TARGET_CHANGED")
 check(kz1[0].shown, "targeted: mark shown")
 check(kz1[0].barColor[4] == 0 and cz1[0].barColor[4] == 0, "line style: no tint, only the marks")
 ns.Set("killzone.style", "zone")
-check(abs(kz1[0].barColor[4] - 0.32) < 1e-9, "zone style: part of the bar tinted")
+check(abs(kz1[0].barColor[4] - 0.85 * 0.35) < 1e-9, "zone style: part of the bar tinted")
+edge = kz1[0].fpEdge
+check(abs(edge.color[1] - 0x14 / 255) < 1e-9 and abs(edge.color[4] - 0.85) < 1e-9 and edge.width == 1, "the mark: a thin dark line by default (not a bright purple stripe)")
+ns.Set("killzone.rgb", "ffffffff"); ns.Set("killzone.width", 2); ns.Set("killzone.alpha", 50)
+check(edge.color[1] == 1 and abs(edge.color[4] - 0.5) < 1e-9 and edge.width == 2 and abs(cz1[0].fpEdge.color[4] - 0.25) < 1e-9, "its colour, width and opacity follow the settings (crit line half as visible)")
+ns.Set("killzone.rgb", "ff141414"); ns.Set("killzone.width", 1); ns.Set("killzone.alpha", 85)
 ns.Set("killzone.style", "line")
 L.execute("PLATES.target = nil")
 G.FireEvent("PLAYER_TARGET_CHANGED")
@@ -504,9 +509,14 @@ G.FireEvent("QUEST_LOG_UPDATE"); G.FireEvent("QUEST_LOG_UPDATE"); G.RunTimers()
 q1 = qmark("nameplate1")
 check(q1 is not None and q1.shown, "quest mob gets the marker")
 check(qmark("nameplate2") is None, "players never get it")
+sameq = L.eval("function(a, b) return rawequal(a, b) end")
+bl1 = uf("nameplate1").AurasFrame.BuffListFrame
+check(sameq(q1.points[1][2], uf("nameplate1").ClassificationFrame) and q1.points[1][4] == -3, "the marker joins the game's line of icons left of the bar")
+check(sameq(bl1.points[1][2], q1) and bl1.points[1][4] == -3, "the game's buffs line up after the marker")
 L.execute("UNITS.nameplate1.quest = false")
 G.FireEvent("QUEST_REMOVED"); G.RunTimers()
 check(not q1.shown, "quest done: marker gone")
+check(sameq(bl1.points[1][2], uf("nameplate1").ClassificationFrame) and bl1.points[1][4] == -5, "marker gone: the game's buffs move up to where the game puts them, no gap")
 L.execute("UNITS.nameplate1.quest = true")
 ns.Set("info.quest", False)
 check(not q1.shown, "marker can be turned off")
@@ -673,6 +683,21 @@ check(len(p3) == 1 and p3[0][3] == 14 and p3[0][4] == 2, "offsets back at 0: the
 ns.Set("look.friendName.color", "custom"); ns.Set("look.friendName.rgb", "ffff0000")
 check(list(uf("nameplate3").name.vertex.values()) == [1, 0, 0] and cv["nameplateUseClassColorForFriendlyPlayerUnitNames"] == "0", "ally name in its own colour")
 ns.ResetLook("friendName")
+# where the name goes
+ns.Set("look.enemyName.where", "inside")
+pn1 = points("nameplate1")
+check(len(pn1) == 1 and pn1[0][0] == "LEFT" and pn1[0][2] == "LEFT" and pn1[0][3] == 4 and uf("nameplate1").name.justify == "LEFT", "enemy name inside the bar, from the left")
+check(c1.points[1][5] == 2, "the addon's icon row comes down to the bar: no name above it")
+uf("nameplate1").UpdateAnchors(uf("nameplate1"))
+check(points("nameplate1")[0][0] == "LEFT" and uf("nameplate1").name.justify == "LEFT", "kept when the game lays the plate out again")
+ns.Set("look.enemyName.where", "above")
+pn1 = points("nameplate1")
+check(pn1[0][0] == "BOTTOM" and pn1[0][2] == "TOP" and pn1[0][3] == 0 and uf("nameplate1").name.justify == "CENTER", "above the bar, centred")
+ns.Set("look.enemyName.where", "game")
+check(uf("nameplate1").name.justify == "CENTER" and c1.points[1][5] > 10, "as in the game again")
+ns.Set("look.friendName.where", "inside")
+check(uf("nameplate3").showOnlyName or points("nameplate3")[0][0] == "LEFT", "ally with a bar: name inside too")
+ns.Set("look.friendName.where", "game")
 # guild line relative to the name, with its own colour
 L.execute('UNITS.nameplate3.guild = "Орда навсегда"')
 ns.Set("plates.guildFriends", True)
@@ -756,6 +781,71 @@ visible[0].click()
 check(ns.Get("killzone.critMult") == 150 and ns.Get("info.quest") is False, "reset this part: only the execute mark's settings")
 ns.Set("info.quest", True)
 check(len(G.ERRORS) == 0, "no errors on the nameplate pages: " + "; ".join(G.ERRORS[i] for i in range(1, len(G.ERRORS) + 1)))
+
+# ---- unit frames: text on the health and mana bars (off by default)
+L.execute("""
+local function Bar(parent, withTexts)
+  local bar = CreateFrame("StatusBar", nil, parent)
+  if withTexts then
+    bar.TextString = bar:CreateFontString(); bar.TextString:SetPoint("CENTER", bar, "CENTER")
+    bar.LeftText = bar:CreateFontString(); bar.LeftText:SetPoint("LEFT", bar, "LEFT", 2, 0)
+    bar.RightText = bar:CreateFontString(); bar.RightText:SetPoint("RIGHT", bar, "RIGHT", -2, 0)
+  end
+  return bar
+end
+PlayerFrame = CreateFrame("Button"); PlayerFrame.unit = "player"
+PlayerFrame.PlayerFrameContent = { PlayerFrameContentMain = { HealthBarsContainer = { HealthBar = Bar(PlayerFrame, true) }, ManaBarArea = { ManaBar = Bar(PlayerFrame, true) } } }
+TargetFrame = CreateFrame("Button")
+TargetFrame.TargetFrameContent = { TargetFrameContentMain = { HealthBarsContainer = { HealthBar = Bar(TargetFrame, true) }, ManaBar = Bar(TargetFrame, true) } }
+TargetFrame.totFrame = CreateFrame("Button", nil, TargetFrame)
+TargetFrame.totFrame.HealthBar = Bar(TargetFrame.totFrame, false)
+TargetFrame.totFrame.ManaBar = Bar(TargetFrame.totFrame, false)
+UNITS.player = UNITS.player or {}
+UNITS.player.health = 12345; UNITS.player.maxHealth = 14500; UNITS.player.power = 8200; UNITS.player.maxPower = 10000
+UNITS.target = { health = SECRET_VALUE, maxHealth = SECRET_VALUE, power = 100, maxPower = 100 }
+UNITS.targettarget = { health = 3200, maxHealth = 9000, power = 0, maxPower = 0 }
+""")
+pmain = G.PlayerFrame.PlayerFrameContent.PlayerFrameContentMain
+phb, pmb = pmain.HealthBarsContainer.HealthBar, pmain.ManaBarArea.ManaBar
+thb = G.TargetFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
+tot = G.TargetFrame.totFrame.HealthBar
+ns.UpdateUnitFrames()
+check(ns.Get("frames.enabled") is False and ns.GetFrameOverlay(phb) is None and phb.TextString.alpha != 0, "frames block off by default: the game's bars untouched")
+ns.Set("frames.enabled", True)
+po = ns.GetFrameOverlay(phb)
+check(po is not None and po.center.text == "12.3к (85%)" and phb.TextString.alpha == 0 and phb.LeftText.alpha == 0, "your health: current and percent, the game's text hidden")
+check(ns.GetFrameOverlay(pmb).center.text == "8.2к", "your mana: current")
+check(L.eval("function(t) return issecretvalue(t) end")(ns.GetFrameOverlay(thb).center.text) and len(G.ERRORS) == 0, "target's secret health still shown (secret text), no errors")
+check(ns.GetFrameOverlay(tot).center.text == "36%" and abs(ns.GetFrameOverlay(tot).center.textScale - 0.8) < 1e-9, "target of target: percent, smaller text, on a bar without the game's texts")
+check(ns.GetFrameOverlay(G.TargetFrame.totFrame.ManaBar).center.text == "", "its mana: nothing")
+for fmt, expected in (("current", "12.3к"), ("percent", "85%"), ("currentMax", "12.3к / 14.5к"), ("currentMaxPercent", "12.3к / 14.5к (85%)"), ("missing", "-2.1к"), ("missingPercent", "-2.1к (85%)")):
+    ns.Set("frames.player.health", fmt)
+    check(po.center.text == expected, f"health as {fmt}: {po.center.text!r}")
+ns.Set("frames.player.health", "split")
+check(po.left.text == "85%" and po.right.text == "12.3к" and po.center.text == "", "percent left, current right")
+ns.Set("frames.player.health", "none")
+check(po.center.text == "" and po.left.text == "" and phb.TextString.alpha == 0, "nothing: no text at all")
+ns.Set("frames.player.health", "game")
+check(phb.TextString.alpha == 1 and po.center.text == "", "as in the game: the game's text back")
+ns.Set("frames.player.health", "currentPercent")
+ns.Set("frames.player.when", "combat")
+check(po.center.text == "", "only in combat: nothing out of combat")
+L.execute("IN_COMBAT = true"); ns.UpdateUnitFrames()
+check(po.center.text == "12.3к (85%)", "in combat: shown")
+L.execute("IN_COMBAT = false"); ns.Set("frames.player.when", "always")
+L.execute("UNITS.player.dead = true"); ns.UpdateUnitFrames()
+check(po.center.text == "", "dead: the game's own text says it")
+L.execute("UNITS.player.dead = nil"); ns.UpdateUnitFrames()
+ns.Set("frames.player.health", "missing"); ns.CopyFrameText("player")
+check(ns.Get("frames.target.health") == "missing" and ns.Get("frames.tot.health") == "missing" and ns.Get("frames.tot.scale") == 80, "the same on the other frames (sizes stay)")
+ns.ResetOverrides()
+check(ns.Get("frames.enabled") is False and phb.TextString.alpha == 1 and po.center.text == "", "off again: the game's texts back")
+pf = S["FOREVERPLATES_UI_PART_FRAMES"]
+check(pf.page == "Фреймы" and [d.value for d in pf.getOptions().values()] == ["plate", "player", "target", "tot"], "Frames page: general, your frame, target, target of target")
+pf.set("tot")
+check(shows("FOREVERPLATES_FRAMES_TOT_HEALTH") and not shows("FOREVERPLATES_FRAMES_PLAYER_HEALTH") and not shows("FOREVERPLATES_FRAMES_ENABLED"), "a frame's options listed alone")
+pf.set("plate")
+check(len(G.ERRORS) == 0, "no errors on frames: " + "; ".join(G.ERRORS[i] for i in range(1, len(G.ERRORS) + 1)))
 
 # proxy settings round trip
 s = S["FOREVERPLATES_NATIVE_CASTICON"]
@@ -849,13 +939,32 @@ guild_button[0].scripts["OnClick"](guild_button[0])
 check(ns2.db.parts["enemy"] == "guild" and "Currently off." in enemy_sketch.hint.text and guild_button[0].selected.shown, "click selects the part; the hint says it is off now")
 check(abs(enemy_sketch.parts.enemyGuild.alpha - 0.85 * 0.25) < 1e-9, "parts turned off are drawn faint")
 ns2.Set("look.enemyName.y", 6)
-check(enemy_sketch.parts.enemyName.points[1][5] == 8, "the sketch follows the settings (enemy name 6 px up)")
-ns2.Set("look.enemyName.y", 0)
+en = enemy_sketch.parts.enemyName
+check(en.points[1][1] == "LEFT" and en.points[1][5] == 6, "the sketch follows the game's style (Modern: name inside the bar) and the settings (6 px up)")
+ns2.Set("look.enemyName.where", "above")
+check(en.points[1][1] == "BOTTOM" and en.points[1][5] == 8, "name above the bar in the sketch")
+ns2.Set("look.enemyName.y", 0); ns2.Set("look.enemyName.where", "game")
+qp = enemy_sketch.parts.gameBuffs.points[1]
+same2 = L2.eval("function(a, b) return rawequal(a, b) end")
+check(same2(qp[2], enemy_sketch.parts.quest), "sketch: the game's buffs follow the quest marker")
+ns2.Set("info.quest", False)
+qp = enemy_sketch.parts.gameBuffs.points[1]
+check(same2(qp[2], enemy_sketch.parts.bar) and qp[4] == -5, "quest marker off: the game's buffs move up to the bar")
+ns2.Set("info.quest", True)
 ally_sketch = ns2.ShowSketch(sketch_frame, "ally")
 check(not enemy_sketch.canvas.shown and ally_sketch.canvas.shown and len(ally_sketch.buttons) == 6, "the same list frame shows the ally sketch on the Ally page")
 pet_sketch = ns2.ShowSketch(sketch_frame, "pet")
 check(pet_sketch.canvas.shown and [x.part for x in pet_sketch.buttons.values()] == ["plate", "name", "owner"], "pet sketch: plate, name, owner")
 check(G2.SETTINGS.layouts["Ally"].inits[2].data["kind"] == "ally" and G2.SETTINGS.layouts["Ally's pet"].inits[2].data["kind"] == "pet", "each page has its own sketch")
+frames_sketch = ns2.ShowSketch(sketch_frame, "frames")
+ps = frames_sketch.parts.frameBars.player.health.center
+check(ps.text == "12 345 / 14 500" and frames_sketch.parts.player.alpha == 0.25, "frames sketch: block off, the game's text drawn faint: " + str(ps.text))
+ns2.Set("frames.enabled", True)
+check(ps.text == "12.3K (85%)" and frames_sketch.parts.player.alpha == 1, "block on: the chosen format in the sketch")
+fbtn = [x for x in frames_sketch.buttons.values() if x.part == "target"][0]
+fbtn.scripts["OnClick"](fbtn)
+check(ns2.db.parts["frames"] == "target" and "Target:" in frames_sketch.hint.text, "a frame clicked in the sketch is selected")
+ns2.Set("frames.enabled", False)
 check(len(G2.ERRORS) == 0, "no errors for warrior run")
 
 # ---------------------------------------------------------------- settings saved by 0.9 are carried over

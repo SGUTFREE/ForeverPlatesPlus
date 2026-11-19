@@ -199,12 +199,17 @@ local function NameIsInsideBar()
 	return style == (styles and styles.Modern or 0) or style == (styles and styles.Block or 2)
 end
 
+-- for the settings sketch
+ns.GameNameInsideBar = NameIsInsideBar
+
 -- Anchored to the health bar, not to the name: the name's text can be secret, the bar's size never is.
 -- The offset reproduces where the game puts its own debuff row (just above the name).
 local function AnchorContainer(container, unitFrame)
 	local padding = tonumber(C_CVar.GetCVar("nameplateDebuffPadding")) or 2
 	local offset = padding
-	if not NameIsInsideBar() then
+	local place = ns.GetNamePlace and ns.GetNamePlace(unitFrame)
+	local nameInside = place == "inside" or (place == nil and NameIsInsideBar())
+	if not nameInside then
 		local setup = NamePlateSetupOptions
 		local nameHeight = ((setup and setup.healthBarFontHeight) or 14) * (ns.GetNameScale and ns.GetNameScale(unitFrame) or 1)
 		local nameSpacing = (setup and setup.healthBarToNameAboveSpacing) or 2
@@ -219,11 +224,37 @@ local function AnchorContainer(container, unitFrame)
 	container:SetPoint("BOTTOMLEFT", unitFrame.HealthBarsContainer, "TOPLEFT", dx, offset + dy)
 end
 
+-- Left of the bar the game lines up its icons (raid mark, elite dragon, then its buffs). Our quest
+-- marker joins that line: while it is shown the game's buffs move left of it, otherwise they keep the
+-- game's own place right next to the others, so nothing leaves a gap.
+local buffsMoved = setmetatable({}, { __mode = "k" }) -- unit frame -> true while its buffs follow our marker
+
+local function AnchorGameBuffs(unitFrame, buffs)
+	local marker = ns.GetQuestMarker and ns.GetQuestMarker(unitFrame)
+	local classification = unitFrame.ClassificationFrame
+	if marker and marker:IsShown() then
+		buffs:ClearAllPoints()
+		buffs:SetPoint("RIGHT", marker, "LEFT", -3, 0)
+		buffsMoved[unitFrame] = true
+	elseif buffsMoved[unitFrame] then
+		buffs:ClearAllPoints()
+		if type(classification) == "table" then
+			buffs:SetPoint("RIGHT", classification, "LEFT", -5, 0) -- where the game's own layout puts them
+		else
+			buffs:SetPoint("RIGHT", unitFrame.HealthBarsContainer, "LEFT", -5, 0)
+		end
+		buffsMoved[unitFrame] = nil
+	end
+end
+
 -- size, opacity and place of the game's own aura lists
 local function ApplyGameLook(unitFrame)
 	local auras = unitFrame.AurasFrame
 	if type(auras) ~= "table" then
 		return
+	end
+	if type(auras.BuffListFrame) == "table" and auras.BuffListFrame.SetPoint then
+		AnchorGameBuffs(unitFrame, auras.BuffListFrame)
 	end
 	for _, list in ipairs(GAME_LISTS) do
 		local frame = auras[list.key]
@@ -296,6 +327,11 @@ function M:OnPlateAdded(unit, unitFrame)
 	container:SetUnit(unit)
 	container:Show()
 	container:UpdateAllAuras() -- the same token (nameplate3) can come back for a different unit
+end
+
+-- the quest marker appeared or went away (Quest)
+function ns.PlaceGameAuras(unitFrame)
+	ApplyGameLook(unitFrame)
 end
 
 -- the game re-anchors its lists (and the name) on a new layout

@@ -24,7 +24,7 @@ local SAMPLE_COLOR = {
 	petName = { class = { 0.67, 0.83, 0.45 } },                             -- a hunter's pet
 }
 
-ns.SKETCH_HEIGHT = { enemy = 200, ally = 150, pet = 124 }
+ns.SKETCH_HEIGHT = { enemy = 200, ally = 150, pet = 124, frames = 140 }
 
 -- sketch region -> part of the page (the regions are built in Build)
 local REGIONS = {
@@ -40,6 +40,9 @@ local REGIONS = {
 	},
 	pet = {
 		{ "bar", "plate" }, { "petName", "name" }, { "petOwner", "owner" },
+	},
+	frames = {
+		{ "background", "plate" }, { "player", "player" }, { "target", "target" }, { "tot", "tot" },
 	},
 }
 
@@ -75,6 +78,11 @@ local IS_ON = {
 	},
 	pet = {
 		owner = function() return Any("plates.petOwner") end,
+	},
+	frames = {
+		player = function() return Any("frames.enabled") end,
+		target = function() return Any("frames.enabled") end,
+		tot = function() return Any("frames.enabled") end,
 	},
 }
 
@@ -236,7 +244,47 @@ local function BuildPet(canvas, parts)
 	parts.petOwner = NewText(canvas, L.SKETCH_ALLY, NAME_FONTS)
 end
 
-local BUILDERS = { enemy = BuildEnemy, ally = BuildAlly, pet = BuildPet }
+-- unit frames: yours, your target's, your target's target, each a health and a mana bar
+local FRAME_SAMPLES = {
+	player = { label = "SKETCH_YOU", x = 14, width = 160, health = { 12345, 14500 }, mana = { 8200, 10000 }, color = { 0.1, 0.75, 0.1 } },
+	target = { label = "SKETCH_TARGET", x = 204, width = 160, health = { 45600, 80000 }, mana = { 3000, 3000 }, color = { 0.8, 0.1, 0.1 } },
+	tot = { label = "SKETCH_TOT", x = 394, width = 100, health = { 3200, 9000 }, mana = { 1500, 2000 }, color = { 0.1, 0.75, 0.1 }, small = true },
+}
+
+local function NewBarStrings(bar)
+	local strings = {}
+	for side, point in pairs({ center = "CENTER", left = "LEFT", right = "RIGHT" }) do
+		local text = NewText(bar, "", SMALL_FONTS)
+		local x = (side == "left" and 3) or (side == "right" and -3) or 0
+		text:SetPoint(point, bar, point, x, 0)
+		text:SetTextColor(1, 1, 1)
+		strings[side] = text
+	end
+	return strings
+end
+
+local function BuildFrames(canvas, parts)
+	local background = CreateFrame("Frame", nil, canvas)
+	background:SetPoint("TOPLEFT", canvas, "TOPLEFT", 4, 0)
+	background:SetPoint("BOTTOMRIGHT", canvas, "BOTTOMRIGHT", -24, 0)
+	parts.background = background
+	parts.frameBars = {}
+	for frameKey, sample in pairs(FRAME_SAMPLES) do
+		local box = CreateFrame("Frame", nil, canvas)
+		box:SetSize(sample.width + 10, sample.small and 46 or 56)
+		box:SetPoint("TOPLEFT", canvas, "TOPLEFT", sample.x, -14)
+		local label = NewText(box, L[sample.label], { "GameFontNormalSmall", "GameFontNormal" })
+		label:SetPoint("TOPLEFT", box, "TOPLEFT", 5, -2)
+		local health = NewBar(box, sample.width, sample.small and 10 or 16, sample.color, sample.health[1] / sample.health[2])
+		health:SetPoint("TOPLEFT", box, "TOPLEFT", 5, -16)
+		local mana = NewBar(box, sample.width, sample.small and 7 or 11, { 0.1, 0.3, 0.9 }, sample.mana[1] / sample.mana[2])
+		mana:SetPoint("TOPLEFT", health, "BOTTOMLEFT", 0, -2)
+		parts[frameKey] = box
+		parts.frameBars[frameKey] = { health = NewBarStrings(health), mana = NewBarStrings(mana) }
+	end
+end
+
+local BUILDERS = { enemy = BuildEnemy, ally = BuildAlly, pet = BuildPet, frames = BuildFrames }
 
 local function BuildKind(self, kind)
 	local sketch = { kind = kind, parts = {}, buttons = {} }
@@ -316,8 +364,22 @@ local function NameColor(element)
 	return samples and samples[mode] or WHITE
 end
 
--- a name line: colour, size, opacity, offset from its place above the bar
-local function PlaceName(fontString, bar, element)
+-- is the name drawn inside the bar (its "where" setting, or the game's style for "as in the game")
+local function NameInside(element, hasBar)
+	if not hasBar then
+		return false
+	end
+	local where = ns.Get("look." .. element .. ".where")
+	if where == "inside" then
+		return true
+	elseif where == "above" then
+		return false
+	end
+	return ns.GameNameInsideBar and ns.GameNameInsideBar() or false
+end
+
+-- a name line: colour, size, opacity, offset from its place above (or inside) the bar
+local function PlaceName(fontString, bar, element, inside)
 	local scale, alpha = ns.LookScale(element), ns.LookAlpha(element)
 	local dx, dy = ns.LookOffset(element)
 	local color = NameColor(element)
@@ -325,13 +387,19 @@ local function PlaceName(fontString, bar, element)
 	SetTextScale(fontString, scale)
 	fontString:SetAlpha(alpha)
 	fontString:ClearAllPoints()
-	fontString:SetPoint("BOTTOM", bar, "TOP", dx, 2 + dy)
+	if inside then
+		fontString:SetJustifyH("LEFT")
+		fontString:SetPoint("LEFT", bar, "LEFT", 4 + dx, dy)
+	else
+		fontString:SetJustifyH("CENTER")
+		fontString:SetPoint("BOTTOM", bar, "TOP", dx, 2 + dy)
+	end
 	return scale, alpha, dy, color
 end
 
 -- the small second line; nameOnly: the plate shows only the name ("auto" puts the line under it).
 -- Returns the room it takes above the name.
-local function PlaceSubtitle(fontString, name, element, nameScale, nameAlpha, nameOnly, color, faint)
+local function PlaceSubtitle(fontString, name, element, nameScale, nameAlpha, nameOnly, color, faint, side)
 	local scale = nameScale * SUBTITLE_SIZE * ns.LookScale(element)
 	SetTextScale(fontString, scale)
 	fontString:SetTextColor(color[1], color[2], color[3])
@@ -339,12 +407,13 @@ local function PlaceSubtitle(fontString, name, element, nameScale, nameAlpha, na
 	local place = ns.LookPlace(element)
 	local above = place == "above" or (place == "auto" and not nameOnly)
 	local dx, dy = ns.LookOffset(element)
+	side = side or "" -- "LEFT" when the name is written from the left edge
 	fontString:ClearAllPoints()
 	if above then
-		fontString:SetPoint("BOTTOM", name, "TOP", dx, 1 + dy)
+		fontString:SetPoint("BOTTOM" .. side, name, "TOP" .. side, dx, 1 + dy)
 		return faint == 1 and math.max(0, NAME_HEIGHT * scale + 1 + dy) or 0
 	end
-	fontString:SetPoint("TOP", name, "BOTTOM", dx, -1 + dy)
+	fontString:SetPoint("TOP" .. side, name, "BOTTOM" .. side, dx, -1 + dy)
 	return 0
 end
 
@@ -365,57 +434,95 @@ local function PlaceText(fontString, element, faint, point, relativeTo, relative
 end
 
 local function DrawEnemy(parts)
-	local nameScale, nameAlpha, nameDy = PlaceName(parts.enemyName, parts.bar, "enemyName")
+	local inside = NameInside("enemyName", true)
+	local nameScale, nameAlpha, nameDy = PlaceName(parts.enemyName, parts.bar, "enemyName", inside)
 	local guildRoom = PlaceSubtitle(parts.enemyGuild, parts.enemyName, "enemyGuild", nameScale, nameAlpha, false,
-		{ ns.LookRGB("enemyGuild") }, Faint("enemy", "guild"))
+		{ ns.LookRGB("enemyGuild") }, Faint("enemy", "guild"), inside and "LEFT" or "")
 	PlaceText(parts.health, "enemyHealth", Faint("enemy", "health"), "RIGHT", parts.bar, "RIGHT", -4, 0)
 	PlaceText(parts.castText, "castText", Faint("enemy", "castText"), "LEFT", parts.castIcon, "RIGHT", 2, 0)
 	PlaceText(parts.castTimer, "castTimer", Faint("enemy", "castTimer"), "LEFT", parts.cast, "RIGHT", 3, 0)
 	parts.aggro:SetAlpha(Faint("enemy", "aggro"))
-	parts.killzone:SetAlpha(Faint("enemy", "killzone"))
+	local r, g, b = ns.HexToRGB(ns.Get("killzone.rgb"))
+	local markAlpha = (tonumber(ns.Get("killzone.alpha")) or 85) / 100
+	parts.killzone:SetColorTexture(r, g, b, 1)
+	parts.killzone:SetWidth(math.max(1, math.floor((tonumber(ns.Get("killzone.width")) or 1) + 0.5)))
+	parts.killzone:SetAlpha(markAlpha * Faint("enemy", "killzone"))
 
 	-- the addon's row above the name (purge, then my debuffs), like AnchorContainer in Auras
-	local rowY = 2 + NAME_HEIGHT * nameScale + 2 + nameDy + guildRoom
+	local rowY = 2 + (inside and 0 or (NAME_HEIGHT * nameScale + 2 + nameDy)) + guildRoom
 	PlaceIcons(parts.purge, "purge", ICON_SIZE.purge, Faint("enemy", "purge"), "BOTTOMLEFT", parts.bar, "TOPLEFT", 0, rowY)
 	SizeRow(parts.mine, ICON_SIZE.mine * ns.LookScale("mine"))
 	parts.mine:SetAlpha(ns.LookAlpha("mine") * Faint("enemy", "mine"))
 	parts.mine:ClearAllPoints()
 	parts.mine:SetPoint("BOTTOMLEFT", parts.purge, "BOTTOMRIGHT", 2, 0) -- one shared offset: follows the purge row
 	PlaceIcons(parts.gameDebuffs, "gameDebuffs", ICON_SIZE.game, Faint("enemy", "gameDebuffs"), "BOTTOMLEFT", parts.mine, "BOTTOMRIGHT", 8, 0)
-	PlaceIcons(parts.gameBuffs, "gameBuffs", ICON_SIZE.game, Faint("enemy", "gameBuffs"), "RIGHT", parts.bar, "LEFT", -22, 0)
 	PlaceIcons(parts.gameCC, "gameCC", ICON_SIZE.game, Faint("enemy", "gameCC"), "LEFT", parts.bar, "RIGHT", 5, 0)
 
+	-- left of the bar: the quest "!" first, the game's buffs after it; with the "!" off they move up
+	local questOn = ns.IsPartOn("enemy", "quest")
 	local questSize = math.floor(ICON_SIZE.quest * ns.LookScale("quest") + 0.5)
 	local questDx, questDy = ns.LookOffset("quest")
 	parts.quest:SetSize(questSize, questSize)
 	parts.quest:SetAlpha(ns.LookAlpha("quest") * Faint("enemy", "quest"))
 	parts.quest:ClearAllPoints()
-	parts.quest:SetPoint("RIGHT", parts.bar, "LEFT", -2 + questDx, questDy)
+	parts.quest:SetPoint("RIGHT", parts.bar, "LEFT", -3 + questDx, questDy)
+	if questOn then
+		PlaceIcons(parts.gameBuffs, "gameBuffs", ICON_SIZE.game, Faint("enemy", "gameBuffs"), "RIGHT", parts.quest, "LEFT", -3, 0)
+	else
+		PlaceIcons(parts.gameBuffs, "gameBuffs", ICON_SIZE.game, Faint("enemy", "gameBuffs"), "RIGHT", parts.bar, "LEFT", -5, 0)
+	end
 end
 
 local function DrawAlly(parts)
 	-- name only (the usual) or with a health bar
 	local nameOnly = ns.Get("native.friendNamesOnly") ~= "never"
 	parts.bar:SetAlpha(nameOnly and OFF_ALPHA or 1)
-	local nameScale, nameAlpha, nameDy = PlaceName(parts.allyName, parts.bar, "friendName")
+	local inside = NameInside("friendName", not nameOnly)
+	local nameScale, nameAlpha, nameDy = PlaceName(parts.allyName, parts.bar, "friendName", inside)
 	local guildRoom = PlaceSubtitle(parts.allyGuild, parts.allyName, "friendGuild", nameScale, nameAlpha, nameOnly,
-		{ ns.LookRGB("friendGuild") }, Faint("ally", "guild"))
+		{ ns.LookRGB("friendGuild") }, Faint("ally", "guild"), inside and "LEFT" or "")
 	PlaceText(parts.health, "friendHealth", Faint("ally", "health"), "RIGHT", parts.bar, "RIGHT", -4, 0)
 	PlaceIcons(parts.dispel, "dispel", ICON_SIZE.dispel, Faint("ally", "dispel"), "BOTTOMLEFT", parts.bar, "TOPLEFT",
-		0, 2 + NAME_HEIGHT * nameScale + 2 + nameDy + guildRoom)
+		0, 2 + (inside and 0 or (NAME_HEIGHT * nameScale + 2 + nameDy)) + guildRoom)
 	PlaceIcons(parts.friendGame, "friendGame", ICON_SIZE.game, Faint("ally", "friendGame"), "LEFT", parts.bar, "RIGHT", 5, 0)
 end
 
 local function DrawPet(parts)
 	local nameOnly = ns.Get("plates.petNamesOnly") and true or false
 	parts.bar:SetAlpha(OFF_ALPHA)
-	local nameScale, nameAlpha, _, color = PlaceName(parts.petName, parts.bar, "petName")
+	local nameScale, nameAlpha, _, color = PlaceName(parts.petName, parts.bar, "petName", false)
 	parts.petName:SetAlpha(nameAlpha * (nameOnly and 1 or OFF_ALPHA))
 	PlaceSubtitle(parts.petOwner, parts.petName, "petOwner", nameScale, nameAlpha, true, color,
 		Faint("pet", "owner") * (nameOnly and 1 or OFF_ALPHA))
 end
 
-local DRAW = { enemy = DrawEnemy, ally = DrawAlly, pet = DrawPet }
+local function DrawFrames(parts)
+	local style, decimals = ns.Get("frames.number"), ns.Get("frames.decimals")
+	for frameKey, sample in pairs(FRAME_SAMPLES) do
+		local faint = Faint("frames", frameKey)
+		local scale = (tonumber(ns.Get("frames." .. frameKey .. ".scale")) or 100) / 100
+		parts[frameKey]:SetAlpha(faint)
+		for _, kind in ipairs({ "health", "mana" }) do
+			local strings = parts.frameBars[frameKey][kind]
+			local cur, max = sample[kind][1], sample[kind][2]
+			local format = ns.Get("frames." .. frameKey .. "." .. kind)
+			if format == "game" or not ns.Get("frames.enabled") then
+				-- what the game writes with its status text on: value / max
+				ns.RenderBarText(strings, "currentMax", cur, max, max - cur, cur / max * 100, "full", 0)
+				for _, text in pairs(strings) do
+					SetTextScale(text, sample.small and 0.8 or 1)
+				end
+			else
+				ns.RenderBarText(strings, format, cur, max, max - cur, cur / max * 100, style, decimals)
+				for _, text in pairs(strings) do
+					SetTextScale(text, scale)
+				end
+			end
+		end
+	end
+end
+
+local DRAW = { enemy = DrawEnemy, ally = DrawAlly, pet = DrawPet, frames = DrawFrames }
 
 local function Draw(sketch)
 	DRAW[sketch.kind](sketch.parts)

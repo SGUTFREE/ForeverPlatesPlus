@@ -146,6 +146,7 @@ function FrameMethods:IsVisible() return self.shown end
 function FrameMethods:SetAllPoints(rel) self.points = { { "ALL", rel } } end
 function FrameMethods:SetSize(w, h) self.width, self.height = w, h end
 function FrameMethods:SetWidth(w) self.width = w end
+function FrameMethods:SetColorTexture(r, g, b, a) self.color = { r, g, b, a == nil and 1 or a } end
 function FrameMethods:SetWordWrap(v) self.wordWrap = v end
 function FrameMethods:CanWordWrap() if self.wordWrap == nil then return true end return self.wordWrap end
 function FrameMethods:GetWidth() return self.width or 140 end
@@ -160,6 +161,13 @@ function FrameMethods:GetStatusBarTexture() return self.barTexture end
 function FrameMethods:SetMinMaxValues(a, b) self.min, self.max = a, b end
 function FrameMethods:GetValue() return self.value end
 function FrameMethods:SetText(t) self.text = t end
+-- like the game: secret arguments are allowed and make the text secret
+function FrameMethods:SetFormattedText(fmt, ...)
+	for i = 1, select("#", ...) do
+		if issecretvalue((select(i, ...))) then self.text = SECRET; return end
+	end
+	self.text = fmt:format(...)
+end
 function FrameMethods:GetNumPoints() return #self.points end
 function FrameMethods:GetPoint(i) local p = self.points[i or 1]; if p then return unpack(p, 1, 5) end end
 function FrameMethods:SetJustifyH(j) self.justify = j end
@@ -308,6 +316,10 @@ function UnitCanAttack(_, u) return (UNITS[u] or {}).canAttack end
 function UnitIsPlayer(u) return (UNITS[u] or {}).isPlayer end
 function UnitIsFriend(_, u) return (UNITS[u] or {}).isFriend end
 function UnitHealthMax(u) return (UNITS[u] or {}).maxHealth end
+function UnitHealth(u) return (UNITS[u] or {}).health end
+function UnitPower(u) return (UNITS[u] or {}).power end
+function UnitPowerMax(u) return (UNITS[u] or {}).maxPower end
+function UnitIsDeadOrGhost(u) return (UNITS[u] or {}).dead == true end
 function UnitAffectingCombat(u) return (UNITS[u] or {}).inCombat end
 function UnitExists(u) return UNITS[u] ~= nil end
 function UnitIsMinion(u) return (UNITS[u] or {}).isMinion or false end
@@ -379,8 +391,11 @@ function MakePlate(unit)
 	uf.CastBarsContainer.castBar.CastTargetNameText = NewObject("FontString", uf.CastBarsContainer.castBar)
 	-- the game's aura lists (Blizzard_NamePlates.xml): buffs left of the bar, debuffs above the name, CC right
 	uf.AurasFrame = NewObject("Frame", uf)
+	-- left of the bar: raid mark, elite dragon (hidden ones take no room), then the game's buffs
+	uf.ClassificationFrame = NewObject("Frame", uf)
+	uf.ClassificationFrame:SetPoint("RIGHT", uf.HealthBarsContainer, "LEFT", 0, 0)
 	uf.AurasFrame.BuffListFrame = NewObject("Frame", uf.AurasFrame)
-	uf.AurasFrame.BuffListFrame:SetPoint("RIGHT", uf, "LEFT", -5, 0)
+	uf.AurasFrame.BuffListFrame:SetPoint("RIGHT", uf.ClassificationFrame, "LEFT", -5, 0)
 	uf.AurasFrame.DebuffListFrame = NewObject("Frame", uf.AurasFrame)
 	uf.AurasFrame.DebuffListFrame:SetPoint("LEFT", uf.HealthBarsContainer, "LEFT", 0, 0)
 	uf.AurasFrame.CrowdControlListFrame = NewObject("Frame", uf.AurasFrame)

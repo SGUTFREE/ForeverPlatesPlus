@@ -86,6 +86,7 @@ ns.BASE = {
 	["look.enemyName.alpha"]   = 100,
 	["look.enemyName.color"]   = "game",  -- game | class (players) | white | custom
 	["look.enemyName.rgb"]     = "ffffffff",
+	["look.enemyName.where"]   = "game",  -- game (as the nameplate style draws it) | above | inside the bar
 	["look.enemyGuild.scale"]  = 100,     -- of the name's size
 	["look.enemyGuild.alpha"]  = 85,      -- of the name's opacity
 	["look.enemyGuild.place"]  = "auto",
@@ -112,6 +113,7 @@ ns.BASE = {
 	["look.friendName.alpha"]  = 55,      -- ally names see-through, so allies don't distract
 	["look.friendName.color"]  = "white", -- class | white | custom
 	["look.friendName.rgb"]    = "ffffffff",
+	["look.friendName.where"]  = "game",  -- only for allies shown with a bar
 	["look.friendGuild.scale"] = 100,
 	["look.friendGuild.alpha"] = 85,
 	["look.friendGuild.place"] = "auto",
@@ -131,6 +133,27 @@ ns.BASE = {
 	["look.petOwner.place"]    = "auto",
 	-- every offset ("look.<element>.x" / ".y", "look.addonAuras.x" / ".y" for the enemy's two aura rows) is 0 by default
 
+	-- text on the health and mana bars of your unit frame, your target's and your target's target
+	-- (UnitFrames.lua). Off until turned on; then these formats apply, "game" leaves a bar to the game.
+	-- formats: game | none | current | percent | currentPercent | currentMax | currentMaxPercent |
+	--          missing | missingPercent | split (percent left, current right)
+	-- when: always | combat | noCombat
+	["frames.enabled"]        = false,
+	["frames.number"]         = "short", -- short (12.3k) | full (12 345) | game
+	["frames.decimals"]       = 1,
+	["frames.player.health"]  = "currentPercent",
+	["frames.player.mana"]    = "current",
+	["frames.player.when"]    = "always",
+	["frames.player.scale"]   = 100,
+	["frames.target.health"]  = "currentPercent",
+	["frames.target.mana"]    = "current",
+	["frames.target.when"]    = "always",
+	["frames.target.scale"]   = 100,
+	["frames.tot.health"]     = "percent",
+	["frames.tot.mana"]       = "none",
+	["frames.tot.when"]       = "always",
+	["frames.tot.scale"]      = 80,      -- its bars are small
+
 	-- execute zone on enemy health bars
 	["killzone.enabled"]      = false,
 	["killzone.combatOnly"]   = true,    -- only while you are in combat
@@ -143,6 +166,9 @@ ns.BASE = {
 	["killzone.percent"]      = 20,
 	["killzone.crit"]         = false,   -- faint continuation: kills only on a crit
 	["killzone.critMult"]     = 150,     -- crit damage, % of normal
+	["killzone.rgb"]          = "ff141414", -- colour of the mark: a thin dark line, not a bright stripe
+	["killzone.alpha"]        = 85,      -- its opacity, %
+	["killzone.width"]        = 1,       -- line width, px
 }
 
 ns.ClassPresets = {

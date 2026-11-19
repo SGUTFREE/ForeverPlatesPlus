@@ -206,29 +206,44 @@ local function ApplyName(unitFrame)
 		return
 	end
 	local dx, dy = state.dx or 0, state.dy or 0
-	local point, relativePoint, x, y
+	local point, relativePoint, x, y, justify
+	local width = 0 -- 0: the name takes the width of its text
 	local name = unitFrame.name
+	local where = state.where
+	if unitFrame.showOnlyName then
+		where = "game" -- a plate without a bar: the name has nowhere else to go
+	end
 	if state.center then
 		-- an ally's pet shown as a name: centred over its (hidden) bar like the game's name-only plates,
 		-- whatever side the game's layout puts the name on
-		point, relativePoint, x, y = "BOTTOM", "TOP", 0, 2
+		point, relativePoint, x, y, justify = "BOTTOM", "TOP", 0, 2, "CENTER"
+	elseif where == "above" then
+		point, relativePoint, x, y, justify = "BOTTOM", "TOP", 0, 2, "CENTER"
+	elseif where == "inside" then
+		point, relativePoint, x, y, justify = "LEFT", "LEFT", 4, 0, "LEFT"
+		if not hidden[unitFrame] then
+			-- numbers on the right of the bar: leave them room, the name is cut there
+			local ok, barWidth = pcall(unitFrame.HealthBarsContainer.GetWidth, unitFrame.HealthBarsContainer)
+			if ok and type(barWidth) == "number" and not ns.IsSecret(barWidth) and barWidth > 0 then
+				width = math.max(20, math.floor(barWidth * 0.6))
+			end
+		end
+	elseif state.want then
+		point, relativePoint, x, y = SinglePoint(unitFrame, state.points)
+	end
+	if justify then
 		if not state.justify then
 			state.justify = name:GetJustifyH()
 		end
-		name:SetJustifyH("CENTER")
-	else
-		if state.justify then
-			name:SetJustifyH(state.justify)
-			state.justify = nil
-		end
-		if state.want then
-			point, relativePoint, x, y = SinglePoint(unitFrame, state.points)
-		end
+		name:SetJustifyH(justify)
+	elseif state.justify then
+		name:SetJustifyH(state.justify)
+		state.justify = nil
 	end
 	if point then
 		name:ClearAllPoints()
 		name:SetPoint(point, unitFrame.HealthBarsContainer, relativePoint, x + dx, y + dy)
-		name:SetWidth(0) -- no fixed width either: the name takes the width of its text
+		name:SetWidth(width)
 		state.ours = true
 	elseif dx ~= 0 or dy ~= 0 then
 		-- the game's own points, moved (the name may still be cut where the game cuts it)
@@ -254,15 +269,17 @@ local function OnGameLayout(unitFrame)
 	ApplyName(unitFrame)
 end
 
--- want: write the name in full; dx, dy: move it from the game's place; center: centre it over the bar
-local function SetNameLayout(unitFrame, want, dx, dy, center)
+-- want: write the name in full; dx, dy: move it from the game's place; center: centre it over the bar;
+-- where: "game" | "above" (over the bar) | "inside" (in the bar, from the left)
+local function SetNameLayout(unitFrame, want, dx, dy, center, where)
 	if not unitFrame.name or not unitFrame.HealthBarsContainer then
 		return
 	end
 	dx, dy = dx or 0, dy or 0
+	where = (where == "above" or where == "inside") and where or "game"
 	local state = nameState[unitFrame]
 	if not state then
-		if not want and not center and dx == 0 and dy == 0 then
+		if not want and not center and dx == 0 and dy == 0 and where == "game" then
 			return
 		end
 		state = {}
@@ -272,6 +289,7 @@ local function SetNameLayout(unitFrame, want, dx, dy, center)
 		state.points = CapturePoints(unitFrame.name)
 	end
 	state.want = want
+	state.where = where
 	state.center = center and true or false
 	state.dx, state.dy = dx, dy
 	ApplyName(unitFrame)
@@ -284,8 +302,9 @@ end
 local hookedBars = setmetatable({}, { __mode = "k" })
 local shortOptions -- cached abbreviation options for the current decimals
 
-local function BuildShortOptions()
-	local decimals = math.floor((tonumber(ns.Get("health.decimals")) or 1) + 0.5)
+-- decimals: nil = the nameplate setting
+local function BuildShortOptions(decimals)
+	decimals = math.floor((tonumber(decimals or ns.Get("health.decimals")) or 1) + 0.5)
 	decimals = math.max(0, math.min(2, decimals))
 	local fraction = 10 ^ decimals
 	-- largest first; significand x fraction = the named order (thousands, millions, ...)
@@ -306,6 +325,20 @@ local function BuildShortOptions()
 		end
 	end
 	return { breakpointData = data }
+end
+
+-- a number for display in a style: "short" (12.3k, decimals 0..2), "full" (12 345), "game" (the game's
+-- own shortening). The value may be secret: it only goes through the game's formatters.
+local shortByDecimals = {}
+function ns.FormatNumber(value, style, decimals)
+	if style == "full" then
+		return BreakUpLargeNumbers(value)
+	elseif style == "short" then
+		decimals = math.max(0, math.min(2, math.floor((tonumber(decimals) or 1) + 0.5)))
+		shortByDecimals[decimals] = shortByDecimals[decimals] or BuildShortOptions(decimals)
+		return AbbreviateNumbers(value, shortByDecimals[decimals])
+	end
+	return AbbreviateLargeNumbers(value)
 end
 
 local function FormatHealth(value)
@@ -640,6 +673,15 @@ function ns.GetNameScale(unitFrame)
 	return unitFrame and scaled[unitFrame] or 1
 end
 
+-- where the addon put the name: "above" / "inside" the bar, nil = the game's place
+function ns.GetNamePlace(unitFrame)
+	local state = unitFrame and nameState[unitFrame]
+	if not state or state.center or unitFrame.showOnlyName then
+		return nil
+	end
+	return (state.where == "above" or state.where == "inside") and state.where or nil
+end
+
 -- how far the name was moved up (negative: down)
 function ns.GetNameOffsetY(unitFrame)
 	local state = unitFrame and nameState[unitFrame]
@@ -786,7 +828,7 @@ local function Update(unit, unitFrame)
 		wantFull = ns.Get("plates.enemyFullNames")
 	end
 	local nameDx, nameDy = ns.LookOffset(nameElement)
-	SetNameLayout(unitFrame, wantFull and true or false, nameDx, nameDy, isPet)
+	SetNameLayout(unitFrame, wantFull and true or false, nameDx, nameDy, isPet, not isPet and ns.Get("look." .. nameElement .. ".where"))
 
 	local pet = isPet and PetInfo(unit) or nil
 	SetPetNameOnly(unitFrame, pet)
