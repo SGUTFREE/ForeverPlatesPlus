@@ -10,7 +10,7 @@ local function T(key, ruText, enText)
 	L[key] = ru and ruText or enText
 end
 
-T("ADDON", "Forever Plates+", "Forever Plates+")
+T("ADDON", "ForeverPlates", "ForeverPlates")
 T("LOADED", "загружен. Настройки: /fpl", "loaded. Settings: /fpl")
 T("PRESET", "Пресет", "Preset")
 T("PRESET_TT", "База подходит всем. «Авто» берёт пресет вашего класса, если он есть.", "Base suits everyone. Auto uses your class preset when one exists.")
@@ -113,7 +113,7 @@ T("FADE_NONTARGET", "Бледнее все, кроме цели", "Fade all but 
 T("FADE_NONTARGET_TT", "Пока у вас есть цель, остальные враги бледнее — цель видно сразу. Без цели все как обычно.", "While you have a target the other enemies are faded, so the target stands out. Without a target nothing changes.")
 T("FADE_NONTARGET_ALPHA", "Непрозрачность не-целей", "Opacity of non-targets")
 
-T("ABOUT_MAIN", "Forever Plates+ сохраняет стиль интерфейса игры: включает нужные настройки самой игры и добавляет полезные подсказки. Здесь — пресет (готовый набор под класс) и общее для всех неймплейтов. Дальше — страницы «Враг», «Союзник» и «Питомец союзника»: на каждой схема неймплейта, нажмите на часть — и под схемой будут все её настройки. На странице «Фреймы» — текст на полосах здоровья и маны вашего фрейма и цели (выключено, пока не включите).", "Forever Plates+ keeps the game's interface style: it turns on the right game options and adds useful hints. Here: the preset (a ready set for your class) and what concerns every plate. Then the Enemy, Ally and Ally's pet pages: each has a sketch of the nameplate; click a part and all its settings are under the sketch. The Frames page: text on the health and mana bars of your frame and your target's (off until you turn it on).")
+T("ABOUT_MAIN", "ForeverPlates сохраняет стиль интерфейса игры: включает нужные настройки самой игры и добавляет полезные подсказки. Здесь — пресет (готовый набор под класс) и общее для всех неймплейтов. Дальше — страницы «Враг», «Союзник» и «Питомец союзника»: на каждой схема неймплейта, нажмите на часть — и под схемой будут все её настройки. На странице «Фреймы» — текст на полосах здоровья и маны вашего фрейма и цели (выключено, пока не включите).", "ForeverPlates keeps the game's interface style: it turns on the right game options and adds useful hints. Here: the preset (a ready set for your class) and what concerns every plate. Then the Enemy, Ally and Ally's pet pages: each has a sketch of the nameplate; click a part and all its settings are under the sketch. The Frames page: text on the health and mana bars of your frame and your target's (off until you turn it on).")
 T("ABOUT_PAGE", "Что на этой странице", "About this page")
 T("KZ_STYLE", "Как показывать", "Look")
 T("KZ_STYLE_TT", "Чертой — только тонкая отметка, почти не бросается в глаза. Закрашенной зоной — вся часть полоски левее отметки подкрашена.", "Line: just a thin mark, barely noticeable. Tinted zone: the whole part of the bar left of the mark is tinted.")

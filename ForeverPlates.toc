@@ -1,8 +1,8 @@
 ## Interface: 16001
-## Title: Forever Plates+
+## Title: ForeverPlates
 ## Notes: Fine-tuning for the default WoW Forever nameplates keeping their style, plus text on your and your target's unit frames. Base preset + class presets.
 ## Notes-ruRU: Тонкая настройка стандартных неймплейтов WoW Forever в их родном стиле и текст на фреймах игрока и цели. Базовый пресет + пресеты классов.
-## Version: 0.12.2
+## Version: 0.12.3
 ## Author: Tony
 ## SavedVariablesPerCharacter: ForeverPlatesCharDB
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03

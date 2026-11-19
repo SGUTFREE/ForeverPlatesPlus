@@ -1,4 +1,4 @@
-"""Load Forever Plates into a mocked WoW API and check its behaviour.
+"""Load ForeverPlates into a mocked WoW API and check its behaviour.
 
 usage: python3 -I run_tests.py <addon_dir> <harness_dir>
 """
@@ -377,7 +377,7 @@ check(first.header == ns.L.ABOUT_PAGE and first.tooltip == ns.L.ABOUT_MAIN, "no 
 pages = list(G.SETTINGS.pages.values())
 check(pages == ["Враг", "Союзник", "Питомец союзника", "Фреймы"], "settings split by nameplate, then frames: " + ", ".join(pages))
 S = G.SETTINGS
-check(S["FOREVERPLATES_PROFILE_PRESET"].page == "Forever Plates+" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "Forever Plates+" and S["FOREVERPLATES_NATIVE_ALWAYSSHOW"].page == "Forever Plates+", "preset, general and all-plates options on the main page")
+check(S["FOREVERPLATES_PROFILE_PRESET"].page == "ForeverPlates" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "ForeverPlates" and S["FOREVERPLATES_NATIVE_ALWAYSSHOW"].page == "ForeverPlates", "preset, general and all-plates options on the main page")
 for k in ("ENEMYTEXT_IDLE", "INFO_QUEST", "CAST_TIMER", "CAST_INTERRUPTREADY", "AURAS_PURGE", "NATIVE_NPCBUFFS", "FADE_RANGE", "NATIVE_STACKENEMIES", "THREAT_WARN", "KILLZONE_ENABLED", "NATIVE_MAXDISTANCE"):
     check(S["FOREVERPLATES_" + k].page == "Враг", f"{k} on the Enemy page")
 check(S["FOREVERPLATES_NATIVE_FRIENDNAMESONLY"].page == "Союзник" and S["FOREVERPLATES_AURAS_DISPEL"].page == "Союзник", "ally look and dispel row on the Ally page")

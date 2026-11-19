@@ -1,4 +1,4 @@
--- Minimal WoW API mock for exercising Forever Plates outside the game.
+-- Minimal WoW API mock for exercising ForeverPlates outside the game.
 -- Only what the addon touches; every frame method not listed is a recorded no-op.
 
 LOG = {}

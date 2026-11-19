@@ -4,7 +4,7 @@
 
 ## Как заполнить
 
-1. **Name:** `Forever Plates+`
+1. **Name:** `ForeverPlates`
 2. **Summary** (одна строка, видна в поиске, на самой странице её нет):
    `Fine-tune the default Forever nameplates without changing their look: click any part and adjust it.`
 3. **Description:** включить режим Markdown и вставить всё из блока «Описание» ниже (английский сверху, русский под ним).
@@ -17,11 +17,11 @@
 
 <!-- копировать отсюда -->
 
-# Forever Plates+
+# ForeverPlates
 
 The default Forever nameplates are already good. They just need a few tweaks, and you shouldn't have to swap your whole UI for that.
 
-Forever Plates+ keeps the game's own nameplates and their style. It switches on the useful game options, adds what the game doesn't show and lets you tune every part.
+ForeverPlates keeps the game's own nameplates and their style. It switches on the useful game options, adds what the game doesn't show and lets you tune every part.
 
 ## Click a part, tune it
 
@@ -54,11 +54,11 @@ Text on the health and mana bars of your frame, your target and your target's ta
 
 ---
 
-# Forever Plates+ (на русском)
+# ForeverPlates (на русском)
 
 Стандартные неймплейты Forever и так хороши, им не хватает пары мелочей. Ради этого не нужно менять весь интерфейс.
 
-Forever Plates+ оставляет неймплейты игры и их стиль. Он включает полезные настройки самой игры, добавляет то, чего игра не показывает, и даёт подогнать каждую часть.
+ForeverPlates оставляет неймплейты игры и их стиль. Он включает полезные настройки самой игры, добавляет то, чего игра не показывает, и даёт подогнать каждую часть.
 
 ## Кликнули на часть, подогнали
 

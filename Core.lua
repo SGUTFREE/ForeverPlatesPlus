@@ -7,7 +7,7 @@ ns.modules = {}
 ns.activePlates = {}   -- [unitToken] = unitFrame of the game's nameplate
 
 local function Print(...)
-	print("|cff8fb8ffForever Plates+|r:", ...)
+	print("|cff8fb8ffForeverPlates|r:", ...)
 end
 ns.Print = Print
 

@@ -1,7 +1,7 @@
 local _, ns = ...
 local L = ns.L
 
--- Settings panel: Esc > Options > AddOns > Forever Plates+ (or /fpl, or the minimap button).
+-- Settings panel: Esc > Options > AddOns > ForeverPlates (or /fpl, or the minimap button).
 --
 -- The main page holds the preset and what concerns every plate. Then one page per kind of nameplate:
 -- Враг, Союзник, Питомец союзника. Each starts with a sketch of that nameplate; clicking a part of it
