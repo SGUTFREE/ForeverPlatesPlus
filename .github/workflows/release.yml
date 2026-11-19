@@ -1,0 +1,34 @@
+# A tag (for example 0.13.1) builds the addon zip and publishes it:
+# GitHub Releases always, CurseForge once the CF_API_KEY secret is set
+# and ForeverPlatesPlus.toc has "## X-Curse-Project-ID".
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tests
+        run: |
+          pip install lupa
+          python3 -I tests/run_tests.py . tests
+
+      - name: Package and upload
+        uses: BigWigsMods/packager@v2

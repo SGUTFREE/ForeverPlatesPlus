@@ -101,6 +101,7 @@
 - `tests/` — проверка без игры: `mock.lua` изображает API WoW, `run_tests.py` гоняет аддон через сценарии.
   Запуск: `pip install lupa`, затем `python3 tests/run_tests.py . tests` — в конце должно быть `FAILURES: 0`.
   Игре эта папка не мешает.
+- Выпуск: тег с номером версии (`git tag 0.13.1 && git push origin 0.13.1`) запускает `.github/workflows/release.yml`: тесты, сборка архива по `.pkgmeta`, загрузка в GitHub Releases и на CurseForge. Для CurseForge нужны секрет репозитория `CF_API_KEY` (API-токен CurseForge) и строка `## X-Curse-Project-ID: <номер проекта>` в `ForeverPlatesPlus.toc`; без них архив попадает только в GitHub Releases.
 - `media/` — скриншоты для README и CurseForge, `CURSEFORGE.md` — текст страницы на CurseForge. В архив аддона не попадают (список исключений — в `.pkgmeta`).
 
 Правила, которые держат аддон рабочим в Forever:
