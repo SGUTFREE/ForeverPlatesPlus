@@ -7,9 +7,10 @@
 1. **Name:** `ForeverPlates`
 2. **Summary** (одна строка, видна в поиске, на самой странице её нет):
    `Fine-tune the default Forever nameplates without changing their look: click any part and adjust it.`
-3. **Description:** включить режим Markdown и вставить всё из блока «Описание» ниже (английский сверху, русский под ним).
-4. **Images:** загрузить файлы из `media/` с подписями из раздела «Скриншоты».
-5. **File:** архив `ForeverPlates-<версия>.zip`, игра — **Forever** (Interface 16001). В поле Changelog — пункты нужной версии из `CHANGELOG.md`.
+3. **Avatar:** `media/logo.png` (1024×1024).
+4. **Description:** включить режим Markdown и вставить всё из блока «Описание» ниже (английский сверху, русский под ним).
+5. **Images:** скриншоты из таблицы «Скриншоты» ниже, с их подписями.
+6. **File:** архив `ForeverPlates-<версия>.zip`, игра — **Forever** (Interface 16001). В поле Changelog — пункты нужной версии из `CHANGELOG.md`.
 
 ---
 
