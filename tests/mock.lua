@@ -474,6 +474,24 @@ CURSOR_X, CURSOR_Y = 100, 200
 function GetCursorPosition() return CURSOR_X, CURSOR_Y end
 
 -- settings ----------------------------------------------------------------
+StaticPopupDialogs = {}
+POPUPS = {}
+function StaticPopup_Show(which, arg1)
+	table.insert(POPUPS, { which = which, arg1 = arg1 })
+	return true
+end
+-- a shown popup with an edit box, as the game hands it to the dialog's handlers
+function FakePopup()
+	local popup = { shown = true }
+	popup.editBox = { text = "", parent = popup }
+	function popup.editBox:SetText(t) self.text = t end
+	function popup.editBox:GetText() return self.text end
+	function popup.editBox:HighlightText() end
+	function popup.editBox:GetParent() return self.parent end
+	function popup:Hide() self.shown = false end
+	return popup
+end
+
 SETTINGS = {}
 Settings = { VarType = { Boolean = "boolean", String = "string", Number = "number" } }
 function Settings.RegisterVerticalLayoutCategory(name)

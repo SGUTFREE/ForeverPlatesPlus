@@ -107,10 +107,12 @@ local function InPart(initializer, extra)
 	return initializer
 end
 
+local mainKeysRef -- set by Page: where the main block's keys go
 local function Track(key)
-	if pageKind then
-		-- a control above the sketch belongs to the page's main block
-		table.insert(partKeys[pageKind][partKey or "main"], key)
+	if pageKind and partKey then
+		table.insert(partKeys[pageKind][partKey], key)
+	elseif mainKeysRef then
+		table.insert(mainKeysRef, key) -- a control above the sketches: the page's main block
 	end
 end
 
@@ -348,42 +350,66 @@ end
 
 local SKETCH_TEMPLATE = "ForeverPlatesPlusPreviewTemplate"
 
--- A page for one kind of nameplate (or the unit frames). Top to bottom: a short description; "Main" with
--- what you set most often (MainBlock), always shown; "Fine-tuning" with the sketch, where a click on a
--- part leaves only that part's settings under it (Details, then Part for each part).
-local function NameplatePage(kind, name, about, parts)
+-- A settings page. Top to bottom: a short description; "Main" with what you set most often, its first
+-- line the page's on/off switch (Page, then the controls); then one or more sketches (Sketch), where a
+-- click on a part leaves only that part's settings under it (Part for each part).
+local mainKeys -- keys of the current page's main block, for "Reset main"
+
+local function Page(name, about)
 	category, layout = Settings.RegisterVerticalLayoutSubcategory(mainCategory, name)
-	pageKind, partKey, pageGate = kind, nil, nil
-	partKeys[kind], partLabels[kind] = { main = {} }, {}
+	pageKind, partKey, pageGate = nil, nil, nil
+	mainKeys = {}
+	mainKeysRef = mainKeys
+	Description(about)
+	Header(L.SECTION_MAIN)
+end
+
+-- everything built after it shows only while the page's switch is on
+local function Gate(isOn)
+	pageGate = isOn
+end
+
+local function MainResetButton()
+	local keys = mainKeys
+	Button(L.RESET_MAIN, L.BUTTON_RESET, function()
+		for _, key in ipairs(keys) do
+			ns.db.overrides[key] = nil
+		end
+		ns.Refresh()
+	end, L.RESET_MAIN_TT)
+end
+
+local function SketchAvailable()
+	return ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
+		and C_XMLUtil.GetTemplateInfo(SKETCH_TEMPLATE) and Settings.CreateElementInitializer and true or false
+end
+
+-- a sketch only to look at, nothing to click (the Aggro page)
+local function Picture(kind, title)
+	if not SketchAvailable() then
+		return
+	end
+	local initializer = Settings.CreateElementInitializer(SKETCH_TEMPLATE, { name = title, kind = kind })
+	local height = ns.SKETCH_HEIGHT and ns.SKETCH_HEIGHT[kind] or 160
+	initializer.GetExtent = function()
+		return height
+	end
+	layout:AddInitializer(initializer)
+end
+
+-- a sketch of one kind with its parts: a header, the sketch, and the part picked on it
+local function Sketch(kind, parts, sectionTitle, sketchTitle, partLabel)
+	partKeys[kind], partLabels[kind] = {}, {}
 	for _, part in ipairs(parts) do
 		partKeys[kind][part[1]] = {}
 		partLabels[kind][part[1]] = part[2]
 	end
 	firstPart[kind] = parts[1][1]
 	pageParts[kind] = parts
-	Description(about)
-end
+	pageKind, partKey = kind, nil
+	Header(sectionTitle or L.SECTION_PARTS)
 
-local function MainBlock()
-	partKey = nil
-	Header(L.SECTION_MAIN)
-end
-
-local function MainResetButton()
-	local kind = pageKind
-	Button(L.RESET_MAIN, L.BUTTON_RESET, function()
-		ResetPart(kind, "main")
-	end, L.RESET_MAIN_TT)
-end
-
--- the sketch and the selected part
-local function Details(sketchTitle, partLabel)
-	local kind = pageKind
-	partKey = nil
-	Header(L.SECTION_PARTS)
-
-	local hasSketch = ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
-		and C_XMLUtil.GetTemplateInfo(SKETCH_TEMPLATE) and Settings.CreateElementInitializer and true or false
+	local hasSketch = SketchAvailable()
 	if hasSketch then
 		local initializer = Settings.CreateElementInitializer(SKETCH_TEMPLATE, { name = sketchTitle or L.SKETCH_TITLE, tooltip = L.SKETCH_TT, kind = kind })
 		local height = ns.SKETCH_HEIGHT and ns.SKETCH_HEIGHT[kind] or 160
@@ -406,13 +432,12 @@ local function Details(sketchTitle, partLabel)
 			ns.RefreshLookPreview()
 		end
 	end
-	local entries = pageParts[kind]
 	local setting
 	if hasSketch then
 		setting = Register("ui.part." .. kind, Settings.VarType.String, partLabel or L.PART, GetSelected, SetSelected, firstPart[kind])
 	else
 		local _
-		_, setting = Dropdown("ui.part." .. kind, partLabel or L.PART, L.PART_TT, entries, nil, GetSelected, SetSelected, firstPart[kind])
+		_, setting = Dropdown("ui.part." .. kind, partLabel or L.PART, L.PART_TT, parts, nil, GetSelected, SetSelected, firstPart[kind])
 	end
 	partSettings[kind] = setting
 end
@@ -428,10 +453,97 @@ local function ResetButton()
 	end, L.RESET_PART_TT)
 end
 
+------------------------------------------------------------------------
+-- your own presets (main page)
+------------------------------------------------------------------------
+
+local userPresetEntries = {} -- the dropdown's list, refilled in place
+local selectedUserPreset
+
+local function RefillUserPresets()
+	wipe(userPresetEntries)
+	for _, name in ipairs(ns.UserPresetNames()) do
+		table.insert(userPresetEntries, { name, name })
+	end
+	if #userPresetEntries == 0 then
+		table.insert(userPresetEntries, { "", L.USER_PRESETS_NONE })
+	end
+	if not selectedUserPreset or not ns.accountDb.presets[selectedUserPreset] then
+		selectedUserPreset = ns.UserPresetNames()[1]
+	end
+end
+
+local function UserPresetSelected()
+	return selectedUserPreset ~= nil and ns.accountDb.presets[selectedUserPreset] ~= nil
+end
+
+local function EditBoxOf(popup)
+	return (popup.GetEditBox and popup:GetEditBox()) or popup.editBox or popup.EditBox
+end
+
+local function SaveFromPopup(popup)
+	local editBox = EditBoxOf(popup)
+	local name = editBox and editBox:GetText()
+	if ns.SaveUserPreset(name) then
+		selectedUserPreset = strtrim(name)
+		RefillUserPresets()
+		ns.Print(L.USER_PRESET_SAVED, selectedUserPreset)
+		ns.Refresh("ui.userPreset")
+	end
+end
+
+local function SetUpPopups()
+	if not StaticPopupDialogs then
+		return
+	end
+	StaticPopupDialogs.FOREVERPLATESPLUS_SAVE_PRESET = {
+		text = L.USER_PRESET_NAME,
+		button1 = SAVE or OKAY,
+		button2 = CANCEL,
+		hasEditBox = true,
+		maxLetters = 40,
+		OnShow = function(popup)
+			local editBox = EditBoxOf(popup)
+			if editBox then
+				editBox:SetText(selectedUserPreset or "")
+				editBox:HighlightText()
+			end
+		end,
+		OnAccept = SaveFromPopup,
+		EditBoxOnEnterPressed = function(editBox)
+			local popup = editBox:GetParent()
+			SaveFromPopup(popup)
+			popup:Hide()
+		end,
+		EditBoxOnEscapePressed = function(editBox)
+			editBox:GetParent():Hide()
+		end,
+		timeout = 0,
+		whileDead = true,
+		hideOnEscape = true,
+	}
+	StaticPopupDialogs.FOREVERPLATESPLUS_DELETE_PRESET = {
+		text = L.USER_PRESET_DELETE_ASK,
+		button1 = DELETE or YES,
+		button2 = CANCEL,
+		OnAccept = function()
+			if selectedUserPreset and ns.DeleteUserPreset(selectedUserPreset) then
+				ns.Print(L.USER_PRESET_DELETED, selectedUserPreset)
+				selectedUserPreset = nil
+				RefillUserPresets()
+				ns.Refresh("ui.userPreset")
+			end
+		end,
+		timeout = 0,
+		whileDead = true,
+		hideOnEscape = true,
+	}
+end
+
 local function BuildMain()
 	mainCategory, layout = Settings.RegisterVerticalLayoutCategory(L.ADDON)
 	category = mainCategory
-	pageKind, partKey = nil, nil
+	pageKind, partKey, mainKeys, mainKeysRef = nil, nil, nil, nil
 	Description(L.ABOUT_MAIN)
 
 	Header(L.SECTION_PROFILE)
@@ -451,6 +563,39 @@ local function BuildMain()
 		ns.ResetOverrides()
 		ns.Print(L.RESET_DONE, ns.GetActivePreset())
 	end, L.RESET_TT)
+
+	Header(L.SECTION_USER_PRESETS, L.SECTION_USER_PRESETS_TT)
+	SetUpPopups()
+	RefillUserPresets()
+	Button(L.USER_PRESET_SAVE, L.BUTTON_SAVE, function()
+		if StaticPopup_Show then
+			StaticPopup_Show("FOREVERPLATESPLUS_SAVE_PRESET")
+		end
+	end, L.USER_PRESET_SAVE_TT)
+	Dropdown("ui.userPreset", L.USER_PRESETS, L.USER_PRESETS_TT, userPresetEntries, nil,
+		function()
+			return selectedUserPreset or ""
+		end,
+		function(value)
+			selectedUserPreset = value ~= "" and value or nil
+			ns.Refresh("ui.userPreset")
+		end,
+		"")
+	local apply = Button(L.USER_PRESET_APPLY, L.BUTTON_APPLY, function()
+		if UserPresetSelected() and ns.ApplyUserPreset(selectedUserPreset) then
+			ns.Print(L.USER_PRESET_APPLIED, selectedUserPreset)
+		end
+	end, L.USER_PRESET_APPLY_TT)
+	local delete = Button(L.USER_PRESET_DELETE, L.BUTTON_DELETE, function()
+		if UserPresetSelected() and StaticPopup_Show then
+			StaticPopup_Show("FOREVERPLATESPLUS_DELETE_PRESET", selectedUserPreset)
+		end
+	end)
+	for _, initializer in ipairs({ apply, delete }) do
+		if initializer and initializer.AddShownPredicate then
+			initializer:AddShownPredicate(UserPresetSelected)
+		end
+	end
 
 	Header(L.SECTION_GENERAL)
 	Checkbox("ui.minimap", L.MINIMAP_BUTTON)
@@ -479,65 +624,37 @@ local NUMBERS = {
 	{ "both", L.NUM_BOTH },
 }
 
-local function BuildEnemy()
-	NameplatePage("enemy", L.PAGE_ENEMY, L.ABOUT_ENEMY, {
-		{ "plate", L.PART_PLATE },
-		{ "name", L.PART_NAME },
-		{ "guild", L.PART_GUILD },
-		{ "health", L.PART_HEALTH },
-		{ "killzone", L.PART_KILLZONE },
-		{ "cast", L.PART_CAST },
-		{ "castText", L.PART_CAST_TEXT },
-		{ "castTimer", L.PART_CAST_TIMER },
-		{ "mine", L.PART_MINE },
-		{ "purge", L.PART_PURGE },
-		{ "gameBuffs", L.PART_GAME_BUFFS },
-		{ "gameDebuffs", L.PART_GAME_DEBUFFS },
-		{ "gameCC", L.PART_GAME_CC },
-		{ "quest", L.PART_QUEST },
-	})
-
-	MainBlock()
-	Checkbox("plates.enemies", L.ENEMIES_ON, L.ENEMIES_ON_TT)
-	-- off: enemy plates are the game's, so the rest of the page has nothing to set
-	pageGate = function()
-		return ns.Get("plates.enemies") ~= false
+local function Is(key)
+	return function()
+		return ns.Get(key) ~= false and ns.Get(key) ~= nil
 	end
+end
+
+local function BuildEnemy()
+	Page(L.PAGE_ENEMY, L.ABOUT_ENEMY)
+	Checkbox("plates.enemies", L.ENEMIES_ON, L.ENEMIES_ON_TT)
+	Gate(Is("plates.enemies"))
 	if ns.ClientHasCVar("nameplateMaxDistance") then
 		GameSlider("native.maxDistance", L.MAX_DISTANCE, L.MAX_DISTANCE_TT, 10, 60, 1, function(value)
 			return L.YARDS:format(math.floor(value + 0.5))
 		end)
 	end
 	Checkbox("native.stackEnemies", L.STACK_ENEMIES, L.STACK_ENEMIES_TT)
-	Checkbox("auras.mine", L.PART_MINE, L.MINE_TT)
-	Checkbox("auras.purge", L.PART_PURGE, L.PURGE_TT)
-	Checkbox("killzone.enabled", L.KZ_ENABLED, L.KZ_ENABLED_TT)
-	Checkbox("threat.warn", L.THREAT_WARN, L.THREAT_WARN_TT)
-	local function WarnOn()
-		return ns.Get("threat.warn")
-	end
-	Slider("threat.warnFrom", L.THREAT_WARN_FROM, L.THREAT_WARN_FROM_TT, 30, 95, 5, Percent, WarnOn)
-	Checkbox("threat.warnPulse", L.THREAT_PULSE, L.THREAT_PULSE_TT, WarnOn)
-	Dropdown("native.threat", L.THREAT, L.THREAT_TT, {
-		{ "none", L.THREAT_NONE },
-		{ "progressive", L.THREAT_PROGRESSIVE },
-		{ "flash", L.THREAT_FLASH },
-		{ "bar", L.THREAT_BAR },
-	})
-	Checkbox("cast.timer", L.CAST_TIMER_SHOW, L.CAST_TIMER_TT)
 	Checkbox("plates.guildEnemies", L.GUILD_ENEMIES, L.GUILD_TT)
 	Checkbox("info.quest", L.QUEST_SHOW, L.QUEST_MARK_TT)
 	Checkbox("fade.range", L.FADE_RANGE, L.FADE_RANGE_TT)
-	Slider("fade.rangeAlpha", L.FADE_RANGE_ALPHA, nil, 20, 90, 5, Percent, function()
-		return ns.Get("fade.range")
-	end)
+	Slider("fade.rangeAlpha", L.FADE_RANGE_ALPHA, nil, 20, 90, 5, Percent, Is("fade.range"))
 	Checkbox("fade.nonTarget", L.FADE_NONTARGET, L.FADE_NONTARGET_TT)
-	Slider("fade.nonTargetAlpha", L.FADE_NONTARGET_ALPHA, nil, 20, 90, 5, Percent, function()
-		return ns.Get("fade.nonTarget")
-	end)
+	Slider("fade.nonTargetAlpha", L.FADE_NONTARGET_ALPHA, nil, 20, 90, 5, Percent, Is("fade.nonTarget"))
 	MainResetButton()
 
-	Details()
+	Sketch("enemy", {
+		{ "plate", L.PART_PLATE },
+		{ "name", L.PART_NAME },
+		{ "guild", L.PART_GUILD },
+		{ "health", L.PART_HEALTH },
+		{ "quest", L.PART_QUEST },
+	})
 
 	Part("plate")
 	GameCheckbox("native.enemyMinions", L.ENEMY_MINIONS, L.GAME_OPTION_TT)
@@ -578,10 +695,252 @@ local function BuildEnemy()
 	LookControls("enemyHealth")
 	ResetButton()
 
-	Part("killzone")
-	local function KillZoneOn()
-		return ns.Get("killzone.enabled")
+	Part("quest")
+	LookControls("quest")
+	ResetButton()
+end
+
+local function BuildAlly()
+	Page(L.PAGE_ALLY, L.ABOUT_ALLY)
+	Checkbox("plates.friends", L.FRIENDS_ON, L.FRIENDS_ON_TT)
+	Gate(Is("plates.friends"))
+	Dropdown("native.friendNamesOnly", L.FRIEND_NAMES_ONLY, L.FRIEND_NAMES_ONLY_TT, {
+		{ "never", L.NAMES_ONLY_NEVER },
+		{ "instance", L.NAMES_ONLY_INSTANCE },
+		{ "always", L.NAMES_ONLY_ALWAYS },
+	})
+	Checkbox("plates.guildFriends", L.GUILD_FRIENDS, L.GUILD_TT)
+	MainResetButton()
+
+	Sketch("ally", {
+		{ "plate", L.PART_PLATE },
+		{ "name", L.PART_NAME },
+		{ "guild", L.PART_GUILD },
+		{ "health", L.PART_HEALTH },
+	})
+
+	Part("plate")
+	Checkbox("native.stackFriends", L.STACK_FRIENDS, L.STACK_FRIENDS_TT)
+	Checkbox("native.friendlyNpcs", L.FRIENDLY_NPCS)
+	ResetButton()
+
+	Part("name")
+	NameColor("friendName", {
+		{ "class", L.COLOR_CLASS },
+		{ "white", L.COLOR_WHITE },
+		{ "custom", L.COLOR_CUSTOM },
+	}, L.FRIEND_COLOR_TT)
+	Dropdown("look.friendName.where", L.NAME_WHERE, L.NAME_WHERE_ALLY_TT, NAME_WHERE, function()
+		return ns.Get("native.friendNamesOnly") ~= "always"
+	end)
+	Checkbox("plates.friendFullNames", L.FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
+	LookControls("friendName")
+	ResetButton()
+
+	Part("guild")
+	ColorSwatch("look.friendGuild.rgb", L.COLOR)
+	LookControls("friendGuild", true)
+	ResetButton()
+
+	Part("health")
+	Dropdown("plates.friendHealth", L.FRIEND_HEALTH_MODE, L.FRIEND_HEALTH_MODE_TT, NUMBERS)
+	LookControls("friendHealth")
+	ResetButton()
+end
+
+local function BuildPet()
+	Page(L.PAGE_PET, L.ABOUT_PET)
+	Checkbox("plates.petNamesOnly", L.PET_NAMES_ONLY, L.PET_NAMES_ONLY_TT)
+	Gate(Is("plates.petNamesOnly"))
+	Checkbox("plates.petOwner", L.OWNER_SHOW, L.PET_OWNER_TT)
+	MainResetButton()
+
+	Sketch("pet", {
+		{ "name", L.PART_NAME },
+		{ "owner", L.PART_OWNER },
+	})
+
+	Part("name")
+	NameColor("petName", {
+		{ "friend", L.COLOR_LIKE_FRIENDS },
+		{ "class", L.COLOR_OWNER_CLASS },
+		{ "white", L.COLOR_WHITE },
+		{ "custom", L.COLOR_CUSTOM },
+	}, L.PET_COLOR_TT)
+	LookControls("petName")
+	ResetButton()
+
+	Part("owner")
+	LookControls("petOwner", true)
+	ResetButton()
+end
+
+local function BuildAuras()
+	Page(L.PAGE_AURAS, L.ABOUT_AURAS)
+	Checkbox("auras.enabled", L.AURAS_ON, L.CATEGORY_OFF_TT)
+	Gate(Is("auras.enabled"))
+	Checkbox("auras.mine", L.PART_MINE, L.MINE_TT)
+	Checkbox("auras.minePlayers", L.MINE_PLAYERS, nil, Is("auras.mine"))
+	Checkbox("auras.purge", L.PART_PURGE, L.PURGE_TT)
+	Checkbox("auras.dispel", L.PART_DISPEL, L.DISPEL_TT)
+	MainResetButton()
+
+	Sketch("enemyAuras", {
+		{ "mine", L.PART_MINE },
+		{ "purge", L.PART_PURGE },
+		{ "gameBuffs", L.PART_GAME_BUFFS },
+		{ "gameDebuffs", L.PART_GAME_DEBUFFS },
+		{ "gameCC", L.PART_GAME_CC },
+	}, L.SECTION_ON_ENEMIES)
+
+	Part("mine")
+	Slider("auras.mineMax", L.HOW_MANY, nil, 1, 12, 1)
+	Checkbox("auras.mineTimer", L.TIMER)
+	LookControls("mine")
+	ResetButton()
+
+	Part("purge")
+	Slider("auras.purgeMax", L.HOW_MANY, nil, 1, 6, 1)
+	Checkbox("auras.purgeTimer", L.TIMER)
+	LookControls("purge")
+	ResetButton()
+
+	Part("gameBuffs")
+	Checkbox("native.npcBuffs", L.ON_MOBS)
+	Checkbox("native.pvpBuffs", L.ON_ENEMY_PLAYERS)
+	LookControls("gameBuffs")
+	ResetButton()
+
+	Part("gameDebuffs")
+	Checkbox("native.npcDebuffs", L.ON_MOBS, L.NPC_DEBUFFS_TT)
+	Checkbox("native.pvpDebuffs", L.ON_ENEMY_PLAYERS, L.NPC_DEBUFFS_TT)
+	LookControls("gameDebuffs")
+	ResetButton()
+
+	Part("gameCC")
+	Checkbox("native.npcCC", L.CC_ON_MOBS)
+	Checkbox("native.pvpLoC", L.LOC_ON_ENEMY_PLAYERS)
+	LookControls("gameCC")
+	ResetButton()
+
+	Sketch("allyAuras", {
+		{ "dispel", L.PART_DISPEL },
+		{ "friendGame", L.PART_FRIEND_GAME },
+	}, L.SECTION_ON_FRIENDS)
+
+	Part("dispel")
+	Slider("auras.dispelMax", L.HOW_MANY, nil, 1, 6, 1)
+	Checkbox("auras.dispelTimer", L.TIMER)
+	LookControls("dispel")
+	ResetButton()
+
+	Part("friendGame")
+	Checkbox("native.friendBuffs", L.FRIEND_BUFFS)
+	Checkbox("native.friendDebuffs", L.FRIEND_DEBUFFS)
+	Checkbox("native.friendLoC", L.FRIEND_LOC)
+	LookControls("friendGame")
+	ResetButton()
+end
+
+local function BuildAggro()
+	Page(L.PAGE_AGGRO, L.ABOUT_AGGRO)
+	Checkbox("threat.warn", L.THREAT_WARN, L.THREAT_WARN_TT)
+	Slider("threat.warnFrom", L.THREAT_WARN_FROM, L.THREAT_WARN_FROM_TT, 30, 95, 5, Percent, Is("threat.warn"))
+	Checkbox("threat.warnPulse", L.THREAT_PULSE, L.THREAT_PULSE_TT, Is("threat.warn"))
+	Picture("aggro", L.SKETCH_TITLE_AGGRO)
+	Header(L.SECTION_GAME_AGGRO)
+	Dropdown("native.threat", L.THREAT, L.THREAT_TT, {
+		{ "none", L.THREAT_NONE },
+		{ "progressive", L.THREAT_PROGRESSIVE },
+		{ "flash", L.THREAT_FLASH },
+		{ "bar", L.THREAT_BAR },
+	})
+	MainResetButton()
+end
+
+local function BuildCast()
+	Page(L.PAGE_CAST, L.ABOUT_CAST)
+	Checkbox("cast.enabled", L.CAST_ON, L.CATEGORY_OFF_TT)
+	Gate(Is("cast.enabled"))
+	Checkbox("cast.timer", L.CAST_TIMER_SHOW, L.CAST_TIMER_TT)
+	Checkbox("cast.interruptReady", L.CAST_INTERRUPT, L.CAST_INTERRUPT_TT)
+	Checkbox("native.castName", L.CAST_NAME, L.CAST_NAME_TT)
+	Checkbox("native.castIcon", L.CAST_ICON)
+	Checkbox("native.castTarget", L.CAST_TARGET)
+	Checkbox("native.castImportant", L.CAST_IMPORTANT)
+	Checkbox("native.castOnMe", L.CAST_ON_ME)
+	MainResetButton()
+
+	Sketch("cast", {
+		{ "castText", L.PART_CAST_TEXT },
+		{ "castTimer", L.PART_CAST_TIMER },
+	})
+
+	Part("castText")
+	LookControls("castText")
+	ResetButton()
+
+	Part("castTimer")
+	LookControls("castTimer")
+	ResetButton()
+end
+
+local FRAME_TEXT = {
+	{ "game", L.FT_GAME },
+	{ "none", L.FT_NONE },
+	{ "current", L.FT_CURRENT },
+	{ "percent", L.FT_PERCENT },
+	{ "currentPercent", L.FT_CURRENT_PERCENT },
+	{ "currentMax", L.FT_CURRENT_MAX },
+	{ "currentMaxPercent", L.FT_CURRENT_MAX_PERCENT },
+	{ "missing", L.FT_MISSING },
+	{ "missingPercent", L.FT_MISSING_PERCENT },
+	{ "split", L.FT_SPLIT },
+}
+
+local function BuildFrames()
+	Page(L.PAGE_FRAMES, L.ABOUT_FRAMES)
+	Checkbox("frames.enabled", L.FRAMES_ON, L.CATEGORY_OFF_TT)
+	Gate(Is("frames.enabled"))
+	Dropdown("frames.number", L.FRAMES_NUMBER, nil, {
+		{ "short", L.HEALTH_FORMAT_SHORT },
+		{ "full", L.HEALTH_FORMAT_FULL },
+		{ "game", L.HEALTH_FORMAT_GAME },
+	})
+	Slider("frames.decimals", L.HEALTH_DECIMALS, L.HEALTH_DECIMALS_TT, 0, 2, 1, nil, function()
+		return ns.Get("frames.number") == "short"
+	end)
+	MainResetButton()
+
+	Sketch("frames", {
+		{ "player", L.PART_FRAME_PLAYER },
+		{ "target", L.PART_FRAME_TARGET },
+		{ "tot", L.PART_FRAME_TOT },
+	}, nil, L.SKETCH_TITLE_FRAMES, L.PART_FRAME)
+
+	for _, frameKey in ipairs(ns.UNIT_FRAMES) do
+		Part(frameKey)
+		local prefix = "frames." .. frameKey .. "."
+		Dropdown(prefix .. "health", L.FRAMES_HEALTH, L.FRAMES_TEXT_TT, FRAME_TEXT)
+		Dropdown(prefix .. "mana", L.FRAMES_MANA, L.FRAMES_TEXT_TT, FRAME_TEXT)
+		Dropdown(prefix .. "when", L.FRAMES_WHEN, nil, {
+			{ "always", L.WHEN_ALWAYS },
+			{ "combat", L.WHEN_COMBAT },
+			{ "noCombat", L.WHEN_NO_COMBAT },
+		})
+		Slider(prefix .. "scale", L.FRAMES_SCALE, nil, 50, 200, 5, Percent)
+		Button(L.FRAMES_COPY, L.BUTTON_APPLY, function()
+			ns.CopyFrameText(frameKey)
+		end, L.FRAMES_COPY_TT)
+		ResetButton()
 	end
+end
+
+-- a hidden extra: only after /fpl killzone (and /reload)
+local function BuildKillZone()
+	Page(L.PAGE_KILLZONE, L.ABOUT_KILLZONE)
+	Checkbox("killzone.enabled", L.KZ_ENABLED, L.KZ_ENABLED_TT)
+	local KillZoneOn = Is("killzone.enabled")
 	Dropdown("killzone.style", L.KZ_STYLE, L.KZ_STYLE_TT, {
 		{ "line", L.KZ_STYLE_LINE },
 		{ "zone", L.KZ_STYLE_ZONE },
@@ -613,211 +972,7 @@ local function BuildEnemy()
 		return L.PIXELS:format(math.floor(value + 0.5))
 	end, KillZoneOn)
 	Slider("killzone.alpha", L.LOOK_ALPHA, L.KZ_ALPHA_TT, 10, 100, 5, Percent, KillZoneOn)
-	ResetButton()
-
-	Part("cast")
-	Checkbox("native.castIcon", L.CAST_ICON)
-	Checkbox("native.castTarget", L.CAST_TARGET)
-	Checkbox("native.castImportant", L.CAST_IMPORTANT)
-	Checkbox("native.castOnMe", L.CAST_ON_ME)
-	Checkbox("cast.interruptReady", L.CAST_INTERRUPT, L.CAST_INTERRUPT_TT)
-	ResetButton()
-
-	Part("castText")
-	Checkbox("native.castName", L.SHOW, L.CAST_NAME_TT)
-	LookControls("castText")
-	ResetButton()
-
-	Part("castTimer")
-	LookControls("castTimer")
-	ResetButton()
-
-	Part("mine")
-	Checkbox("auras.minePlayers", L.MINE_PLAYERS)
-	Slider("auras.mineMax", L.HOW_MANY, nil, 1, 12, 1)
-	Checkbox("auras.mineTimer", L.TIMER)
-	LookControls("mine")
-	ResetButton()
-
-	Part("purge")
-	Slider("auras.purgeMax", L.HOW_MANY, nil, 1, 6, 1)
-	Checkbox("auras.purgeTimer", L.TIMER)
-	LookControls("purge")
-	ResetButton()
-
-	Part("gameBuffs")
-	Checkbox("native.npcBuffs", L.ON_MOBS)
-	Checkbox("native.pvpBuffs", L.ON_ENEMY_PLAYERS)
-	LookControls("gameBuffs")
-	ResetButton()
-
-	Part("gameDebuffs")
-	Checkbox("native.npcDebuffs", L.ON_MOBS, L.NPC_DEBUFFS_TT)
-	Checkbox("native.pvpDebuffs", L.ON_ENEMY_PLAYERS, L.NPC_DEBUFFS_TT)
-	LookControls("gameDebuffs")
-	ResetButton()
-
-	Part("gameCC")
-	Checkbox("native.npcCC", L.CC_ON_MOBS)
-	Checkbox("native.pvpLoC", L.LOC_ON_ENEMY_PLAYERS)
-	LookControls("gameCC")
-	ResetButton()
-
-	Part("quest")
-	LookControls("quest")
-	ResetButton()
-end
-
-local function BuildAlly()
-	NameplatePage("ally", L.PAGE_ALLY, L.ABOUT_ALLY, {
-		{ "plate", L.PART_PLATE },
-		{ "name", L.PART_NAME },
-		{ "guild", L.PART_GUILD },
-		{ "health", L.PART_HEALTH },
-		{ "dispel", L.PART_DISPEL },
-		{ "friendGame", L.PART_FRIEND_GAME },
-	})
-
-	MainBlock()
-	Checkbox("plates.friends", L.FRIENDS_ON, L.FRIENDS_ON_TT)
-	-- off: friendly plates are the game's, so the rest of the page has nothing to set
-	pageGate = function()
-		return ns.Get("plates.friends") ~= false
-	end
-	Dropdown("native.friendNamesOnly", L.FRIEND_NAMES_ONLY, L.FRIEND_NAMES_ONLY_TT, {
-		{ "never", L.NAMES_ONLY_NEVER },
-		{ "instance", L.NAMES_ONLY_INSTANCE },
-		{ "always", L.NAMES_ONLY_ALWAYS },
-	})
-	Checkbox("plates.guildFriends", L.GUILD_FRIENDS, L.GUILD_TT)
-	Checkbox("auras.dispel", L.PART_DISPEL, L.DISPEL_TT)
 	MainResetButton()
-
-	Details()
-
-	Part("plate")
-	Checkbox("native.stackFriends", L.STACK_FRIENDS, L.STACK_FRIENDS_TT)
-	Checkbox("native.friendlyNpcs", L.FRIENDLY_NPCS)
-	ResetButton()
-
-	Part("name")
-	NameColor("friendName", {
-		{ "class", L.COLOR_CLASS },
-		{ "white", L.COLOR_WHITE },
-		{ "custom", L.COLOR_CUSTOM },
-	}, L.FRIEND_COLOR_TT)
-	Dropdown("look.friendName.where", L.NAME_WHERE, L.NAME_WHERE_ALLY_TT, NAME_WHERE, function()
-		return ns.Get("native.friendNamesOnly") ~= "always"
-	end)
-	Checkbox("plates.friendFullNames", L.FULL_NAMES, L.FRIEND_FULL_NAMES_TT)
-	LookControls("friendName")
-	ResetButton()
-
-	Part("guild")
-	ColorSwatch("look.friendGuild.rgb", L.COLOR)
-	LookControls("friendGuild", true)
-	ResetButton()
-
-	Part("health")
-	Dropdown("plates.friendHealth", L.FRIEND_HEALTH_MODE, L.FRIEND_HEALTH_MODE_TT, NUMBERS)
-	LookControls("friendHealth")
-	ResetButton()
-
-	Part("dispel")
-	Slider("auras.dispelMax", L.HOW_MANY, nil, 1, 6, 1)
-	Checkbox("auras.dispelTimer", L.TIMER)
-	LookControls("dispel")
-	ResetButton()
-
-	Part("friendGame")
-	Checkbox("native.friendBuffs", L.FRIEND_BUFFS)
-	Checkbox("native.friendDebuffs", L.FRIEND_DEBUFFS)
-	Checkbox("native.friendLoC", L.FRIEND_LOC)
-	LookControls("friendGame")
-	ResetButton()
-end
-
-local function BuildPet()
-	NameplatePage("pet", L.PAGE_PET, L.ABOUT_PET, {
-		{ "name", L.PART_NAME },
-		{ "owner", L.PART_OWNER },
-	})
-
-	MainBlock()
-	Checkbox("plates.petNamesOnly", L.PET_NAMES_ONLY, L.PET_NAMES_ONLY_TT)
-	-- off: the game's own pet labels, nothing here to set
-	pageGate = function()
-		return ns.Get("plates.petNamesOnly") and true or false
-	end
-	Checkbox("plates.petOwner", L.OWNER_SHOW, L.PET_OWNER_TT)
-	MainResetButton()
-
-	Details()
-
-	Part("name")
-	NameColor("petName", {
-		{ "friend", L.COLOR_LIKE_FRIENDS },
-		{ "class", L.COLOR_OWNER_CLASS },
-		{ "white", L.COLOR_WHITE },
-		{ "custom", L.COLOR_CUSTOM },
-	}, L.PET_COLOR_TT)
-	LookControls("petName")
-	ResetButton()
-
-	Part("owner")
-	LookControls("petOwner", true)
-	ResetButton()
-end
-
-local FRAME_TEXT = {
-	{ "game", L.FT_GAME },
-	{ "none", L.FT_NONE },
-	{ "current", L.FT_CURRENT },
-	{ "percent", L.FT_PERCENT },
-	{ "currentPercent", L.FT_CURRENT_PERCENT },
-	{ "currentMax", L.FT_CURRENT_MAX },
-	{ "currentMaxPercent", L.FT_CURRENT_MAX_PERCENT },
-	{ "missing", L.FT_MISSING },
-	{ "missingPercent", L.FT_MISSING_PERCENT },
-	{ "split", L.FT_SPLIT },
-}
-
-local function BuildFrames()
-	NameplatePage("frames", L.PAGE_FRAMES, L.ABOUT_FRAMES, {
-		{ "player", L.PART_FRAME_PLAYER },
-		{ "target", L.PART_FRAME_TARGET },
-		{ "tot", L.PART_FRAME_TOT },
-	})
-
-	MainBlock()
-	Dropdown("frames.number", L.FRAMES_NUMBER, nil, {
-		{ "short", L.HEALTH_FORMAT_SHORT },
-		{ "full", L.HEALTH_FORMAT_FULL },
-		{ "game", L.HEALTH_FORMAT_GAME },
-	})
-	Slider("frames.decimals", L.HEALTH_DECIMALS, L.HEALTH_DECIMALS_TT, 0, 2, 1, nil, function()
-		return ns.Get("frames.number") == "short"
-	end)
-	MainResetButton()
-
-	Details(L.SKETCH_TITLE_FRAMES, L.PART_FRAME)
-
-	for _, frameKey in ipairs(ns.UNIT_FRAMES) do
-		Part(frameKey)
-		local prefix = "frames." .. frameKey .. "."
-		Dropdown(prefix .. "health", L.FRAMES_HEALTH, L.FRAMES_TEXT_TT, FRAME_TEXT)
-		Dropdown(prefix .. "mana", L.FRAMES_MANA, L.FRAMES_TEXT_TT, FRAME_TEXT)
-		Dropdown(prefix .. "when", L.FRAMES_WHEN, nil, {
-			{ "always", L.WHEN_ALWAYS },
-			{ "combat", L.WHEN_COMBAT },
-			{ "noCombat", L.WHEN_NO_COMBAT },
-		})
-		Slider(prefix .. "scale", L.FRAMES_SCALE, nil, 50, 200, 5, Percent)
-		Button(L.FRAMES_COPY, L.BUTTON_APPLY, function()
-			ns.CopyFrameText(frameKey)
-		end, L.FRAMES_COPY_TT)
-		ResetButton()
-	end
 end
 
 local function Build()
@@ -825,7 +980,13 @@ local function Build()
 	BuildEnemy()
 	BuildAlly()
 	BuildPet()
+	BuildAuras()
+	BuildAggro()
+	BuildCast()
 	BuildFrames()
+	if ns.Get("killzone.enabled") then
+		BuildKillZone()
+	end
 	pageKind, partKey = nil, nil
 	Settings.RegisterAddOnCategory(mainCategory)
 end

@@ -151,12 +151,37 @@ end
 -- "Change enemy nameplates" off: the same for the options that only concern enemy plates
 local ENEMY_CVARS = { "nameplateEnemyNpcAuraDisplay", "nameplateEnemyPlayerAuraDisplay", "nameplateThreatDisplay",
 	"nameplateCastBarDisplay", "nameplateSimplifiedTypes", "nameplateShowEnemyMinions", "nameplateShowEnemyMinus" }
-local ENEMY_ONLY = {}
-for _, name in ipairs(ENEMY_CVARS) do
-	ENEMY_ONLY[name] = true
-end
 local function EnemiesChanged()
 	return ns.Get("plates.enemies") ~= false
+end
+
+-- a page switched off gives its game options back to the game (their defaults)
+local CATEGORY_CVARS = {
+	["auras.enabled"] = { "nameplateEnemyNpcAuraDisplay", "nameplateEnemyPlayerAuraDisplay", "nameplateFriendlyPlayerAuraDisplay" },
+	["cast.enabled"] = { "nameplateCastBarDisplay" },
+}
+
+-- the game options nobody should set now: their side or their page is off
+local function ReleasedCVars()
+	local released = {}
+	if not EnemiesChanged() then
+		for _, name in ipairs(ENEMY_CVARS) do
+			released[name] = true
+		end
+	end
+	if not FriendsChanged() then
+		for _, name in ipairs(FRIEND_CVARS) do
+			released[name] = true
+		end
+	end
+	for key, names in pairs(CATEGORY_CVARS) do
+		if ns.Get(key) == false then
+			for _, name in ipairs(names) do
+				released[name] = true
+			end
+		end
+	end
+	return released
 end
 
 local function ApplyStacking()
@@ -175,9 +200,10 @@ end
 
 local function ApplyAll()
 	local friends, enemies = FriendsChanged(), EnemiesChanged()
+	local released = ReleasedCVars()
 	for _, info in ipairs(BITS) do
 		local value = ns.Get(info.key)
-		if (info.cvar == "nameplateFriendlyPlayerAuraDisplay" and not friends) or (ENEMY_ONLY[info.cvar] and not enemies) then
+		if released[info.cvar] then
 			value = nil
 		end
 		if value ~= nil then
@@ -186,7 +212,7 @@ local function ApplyAll()
 	end
 	for _, info in ipairs(OPTIONAL_BOOLS) do
 		local value = ns.Get(info.key)
-		if ENEMY_ONLY[info.cvar] and not enemies then
+		if released[info.cvar] then
 			value = nil
 		end
 		if value ~= nil then
@@ -216,15 +242,9 @@ local function ApplyAll()
 		SetBool("nameplateShowOnlyNameForFriendlyPlayerUnits", namesOnly == "always" or (namesOnly == "instance" and inInstance))
 		-- ally names in class colour: the game's own option, so it also works in dungeons and raids
 		SetBool("nameplateUseClassColorForFriendlyPlayerUnitNames", ns.LookColorMode("friendName") == "class")
-	else
-		for _, name in ipairs(FRIEND_CVARS) do
-			SetToDefault(name)
-		end
 	end
-	if not enemies then
-		for _, name in ipairs(ENEMY_CVARS) do
-			SetToDefault(name)
-		end
+	for name in pairs(released) do
+		SetToDefault(name)
 	end
 	-- health numbers: the addon keeps the game's on and hides them per plate; with neither side changed
 	-- the game decides again
@@ -249,7 +269,7 @@ local function ApplyAll()
 end
 
 function M:Apply(key)
-	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" and key ~= "plates.friends" and key ~= "plates.enemies" and key ~= "look.friendName.color" then
+	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" and key ~= "plates.friends" and key ~= "plates.enemies" and key ~= "auras.enabled" and key ~= "cast.enabled" and key ~= "look.friendName.color" then
 		return
 	end
 	if not ns.Get("native.manage") then

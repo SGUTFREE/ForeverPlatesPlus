@@ -188,7 +188,7 @@ local function ApplyLook(unitFrame)
 	if not castBar then
 		return
 	end
-	local left = leftToGame[unitFrame]
+	local left = leftToGame[unitFrame] or ns.Get("cast.enabled") == false
 	local scale, alpha = ns.LookScale("castText"), ns.LookAlpha("castText")
 	if left then
 		scale, alpha = 1, 1
@@ -233,7 +233,7 @@ function M:OnInit()
 end
 
 local function SetUpExtras(unit, unitFrame)
-	local wanted = IsEnemy(unit) and not leftToGame[unitFrame] and (ns.Get("cast.timer") or ns.Get("cast.interruptReady"))
+	local wanted = IsEnemy(unit) and not leftToGame[unitFrame] and ns.Get("cast.enabled") ~= false and (ns.Get("cast.timer") or ns.Get("cast.interruptReady"))
 	local extra = extras[unitFrame]
 	if not wanted then
 		if extra then

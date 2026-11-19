@@ -39,7 +39,7 @@ local function ShowTooltip(owner)
 	GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
 	GameTooltip:AddLine(L.ADDON)
 	GameTooltip:AddLine(L.PRESET .. ": " .. (L[ns.PresetLabelKey[ns.GetActivePreset()]] or ns.GetActivePreset()), 1, 1, 1)
-	if ns.KillZoneSummary then
+	if ns.KillZoneSummary and ns.Get("killzone.enabled") then
 		GameTooltip:AddLine(L.SECTION_KILLZONE .. ": " .. ns.KillZoneSummary(), 1, 1, 1)
 	end
 	GameTooltip:AddLine(L.MINIMAP_HINT, 0.8, 0.8, 0.8)

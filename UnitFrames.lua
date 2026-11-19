@@ -313,6 +313,9 @@ end
 
 -- is any bar given a format of ours
 local function Active()
+	if ns.Get("frames.enabled") == false then
+		return false -- the Frames page switched off: every bar as in the game
+	end
 	for _, frameKey in ipairs(ns.UNIT_FRAMES) do
 		for _, kind in ipairs({ "health", "mana" }) do
 			local format = ns.Get("frames." .. frameKey .. "." .. kind)
@@ -327,6 +330,9 @@ ns.UnitFramesActive = Active
 
 -- does a frame have a bar of ours (for the settings sketch)
 function ns.UnitFrameChanged(frameKey)
+	if ns.Get("frames.enabled") == false then
+		return false
+	end
 	for _, kind in ipairs({ "health", "mana" }) do
 		local format = ns.Get("frames." .. frameKey .. "." .. kind)
 		if format and format ~= "game" then

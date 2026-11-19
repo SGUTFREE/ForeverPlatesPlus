@@ -21,6 +21,9 @@ ns.BASE = {
 	["native.losFade"]        = 0.4,    -- nameplateOccludedAlphaMult, if the client has it
 	["health.format"]         = "short", -- short (12.3K) | full (12 345) | game
 	["health.decimals"]       = 1,       -- decimals in the short format
+	["auras.enabled"]         = true,     -- Buffs & debuffs page switch (off: as in the game)
+	["cast.enabled"]          = true,     -- Casts page switch
+	["frames.enabled"]        = true,     -- Frames page switch (each bar still "as in the game" until you pick a format)
 	["plates.enemies"]        = true,     -- off: enemy plates exactly as the game draws them
 	["plates.friends"]        = true,     -- off: friendly plates exactly as the game draws them (allies' pets: their own switch)
 	["native.friendNamesOnly"] = "always", -- never | instance | always: ally players show only the name (no bar, no numbers)
@@ -176,7 +179,8 @@ ns.BASE = {
 ns.ClassPresets = {
 	-- Shadow Word: Death: the zone ends at its minimum damage from the description (grows with spell power).
 	PRIEST = {
-		["killzone.enabled"] = true,
+		-- off for everyone; /fpl killzone turns it on (and shows its settings page)
+		["killzone.enabled"] = false,
 		["killzone.mode"]    = "spell",
 		["killzone.spell"]   = 32379, -- Shadow Word: Death; by name the game picks the player's own rank
 		["killzone.value"]   = 350,

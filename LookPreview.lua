@@ -24,18 +24,28 @@ local SAMPLE_COLOR = {
 	petName = { class = { 0.67, 0.83, 0.45 } },                             -- a hunter's pet
 }
 
-ns.SKETCH_HEIGHT = { enemy = 200, ally = 150, pet = 124, frames = 156 }
+-- Sketch kinds: one per page sketch. The Buffs & debuffs and Cast pages draw the enemy (or ally) plate
+-- again with only their own parts to click.
+local BASE_KIND = { enemy = "enemy", enemyAuras = "enemy", cast = "enemy", aggro = "enemy", ally = "ally", allyAuras = "ally", pet = "pet", frames = "frames" }
+ns.SKETCH_HEIGHT = { enemy = 200, enemyAuras = 200, cast = 200, aggro = 200, ally = 150, allyAuras = 150, pet = 124, frames = 156 }
+-- sketches only to look at (no parts to click): their hint is HINT_<kind>
+local PICTURE = { aggro = true }
 
 -- sketch region -> part of the page (the regions are built in Build)
 local REGIONS = {
 	enemy = {
-		{ "bar", "plate" }, { "killzone", "killzone" }, { "health", "health" },
-		{ "enemyName", "name" }, { "enemyGuild", "guild" }, { "cast", "cast" }, { "castText", "castText" },
-		{ "castTimer", "castTimer" }, { "purge", "purge" }, { "mine", "mine" }, { "gameDebuffs", "gameDebuffs" },
-		{ "gameBuffs", "gameBuffs" }, { "gameCC", "gameCC" }, { "quest", "quest" },
+		{ "bar", "plate" }, { "health", "health" }, { "enemyName", "name" }, { "enemyGuild", "guild" }, { "quest", "quest" },
+	},
+	enemyAuras = {
+		{ "purge", "purge" }, { "mine", "mine" }, { "gameDebuffs", "gameDebuffs" }, { "gameBuffs", "gameBuffs" }, { "gameCC", "gameCC" },
+	},
+	cast = {
+		{ "cast", "castText" }, { "castText", "castText" }, { "castTimer", "castTimer" },
 	},
 	ally = {
 		{ "bar", "plate" }, { "health", "health" }, { "allyName", "name" }, { "allyGuild", "guild" },
+	},
+	allyAuras = {
 		{ "dispel", "dispel" }, { "friendGame", "friendGame" },
 	},
 	pet = {
@@ -44,6 +54,7 @@ local REGIONS = {
 	frames = {
 		{ "player", "player" }, { "target", "target" }, { "tot", "tot" },
 	},
+	aggro = {},
 }
 
 -- is a part shown at all; parts not listed are always on
@@ -87,16 +98,40 @@ local IS_ON = {
 
 -- parts whose on/off switch is in the page's main block, above the sketch
 local SWITCH_IN_MAIN = {
-	enemy = { guild = true, mine = true, purge = true, killzone = true, castTimer = true, quest = true },
-	ally = { guild = true, dispel = true },
+	enemy = { guild = true, quest = true },
+	enemyAuras = { mine = true, purge = true },
+	cast = { castText = true, castTimer = true },
+	ally = { guild = true },
+	allyAuras = { dispel = true },
 	pet = { owner = true },
 }
 
-function ns.IsPartOn(kind, part)
-	if kind == "ally" and part ~= "plate" and ns.Get("plates.friends") == false then
-		return false -- friendly plates left to the game
+-- the switch in the first line of a page: off, its parts are as the game draws them
+local PART_MASTER = {
+	mine = "auras.enabled", purge = "auras.enabled", gameBuffs = "auras.enabled", gameDebuffs = "auras.enabled",
+	gameCC = "auras.enabled", dispel = "auras.enabled", friendGame = "auras.enabled",
+	castText = "cast.enabled", castTimer = "cast.enabled",
+	player = "frames.enabled", target = "frames.enabled", tot = "frames.enabled",
+}
+
+local function MasterOff(kind, part)
+	local base = BASE_KIND[kind] or kind
+	if base == "enemy" and part ~= "plate" and ns.Get("plates.enemies") == false then
+		return true -- enemy plates left to the game
 	end
-	local check = IS_ON[kind] and IS_ON[kind][part]
+	if base == "ally" and part ~= "plate" and ns.Get("plates.friends") == false then
+		return true -- friendly plates left to the game
+	end
+	local master = PART_MASTER[part]
+	return master and ns.Get(master) == false or false
+end
+
+function ns.IsPartOn(kind, part)
+	if MasterOff(kind, part) then
+		return false
+	end
+	local base = BASE_KIND[kind] or kind
+	local check = IS_ON[base] and IS_ON[base][part]
 	return not check or check()
 end
 
@@ -335,7 +370,7 @@ local function BuildKind(self, kind)
 	local text = CreateFrame("Frame", nil, canvas)
 	text:SetAllPoints(canvas)
 	text:SetFrameLevel(canvas:GetFrameLevel() + 5)
-	BUILDERS[kind](canvas, sketch.parts, text)
+	BUILDERS[BASE_KIND[kind] or kind](canvas, sketch.parts, text)
 
 	-- a button over every part; the bar's button lies under the parts drawn on the bar
 	for index, entry in ipairs(REGIONS[kind]) do
@@ -505,7 +540,8 @@ local function DrawEnemy(parts)
 	local markAlpha = (tonumber(ns.Get("killzone.alpha")) or 85) / 100
 	parts.killzone:SetColorTexture(r, g, b, 1)
 	parts.killzone:SetWidth(math.max(1, math.floor((tonumber(ns.Get("killzone.width")) or 1) + 0.5)))
-	parts.killzone:SetAlpha(markAlpha * Faint("enemy", "killzone"))
+	parts.killzone:SetAlpha(markAlpha)
+	parts.killzone:SetShown(ns.Get("killzone.enabled") and true or false) -- a hidden extra (/fpl killzone)
 
 	-- the addon's row above the name (purge, then my debuffs), like AnchorContainer in Auras
 	local rowY = 2 + (inside and 0 or (NAME_HEIGHT * nameScale + 2 + nameDy)) + guildRoom
@@ -586,15 +622,20 @@ end
 local DRAW = { enemy = DrawEnemy, ally = DrawAlly, pet = DrawPet, frames = DrawFrames }
 
 local function Draw(sketch)
-	DRAW[sketch.kind](sketch.parts)
+	local base = BASE_KIND[sketch.kind] or sketch.kind
+	DRAW[base](sketch.parts)
+	if PICTURE[sketch.kind] then
+		sketch.hint:SetText(L["HINT_" .. sketch.kind] or "")
+		return
+	end
 	local selected = ns.GetPart and ns.GetPart(sketch.kind) or "plate"
 	for _, button in ipairs(sketch.buttons) do
 		button.selected:SetShown(button.part == selected)
 	end
 	local label = ns.PartLabel and ns.PartLabel(sketch.kind, selected) or selected
-	local text = label .. ": " .. (L["HINT_" .. sketch.kind .. "_" .. selected] or "")
+	local text = label .. ": " .. (L["HINT_" .. sketch.kind .. "_" .. selected] or L["HINT_" .. base .. "_" .. selected] or "")
 	if not ns.IsPartOn(sketch.kind, selected) then
-		local inMain = SWITCH_IN_MAIN[sketch.kind] and SWITCH_IN_MAIN[sketch.kind][selected]
+		local inMain = (SWITCH_IN_MAIN[sketch.kind] and SWITCH_IN_MAIN[sketch.kind][selected]) or MasterOff(sketch.kind, selected)
 		text = text .. " " .. (sketch.kind == "frames" and L.FRAMES_GAME_NOW or (inMain and L.PART_OFF_MAIN) or L.PART_OFF_NOW)
 	end
 	sketch.hint:SetText(text)

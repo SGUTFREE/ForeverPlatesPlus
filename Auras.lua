@@ -261,7 +261,7 @@ local function ApplyGameLook(unitFrame)
 		local frame = auras[list.key]
 		if type(frame) == "table" and frame.SetAlpha then
 			local element = plateIsFriend[unitFrame] and "friendGame" or list.element
-			local left = plateLeft[unitFrame]
+			local left = plateLeft[unitFrame] or ns.Get("auras.enabled") == false
 			local scale = left and 1 or ns.LookScale(element)
 			local dx, dy = 0, 0
 			if not left then
@@ -311,8 +311,8 @@ function M:OnPlateAdded(unit, unitFrame)
 		return
 	end
 	local wanted = WantedGroups(unit)
-	if plateLeft[unitFrame] then
-		wanted = {}
+	if plateLeft[unitFrame] or ns.Get("auras.enabled") == false then
+		wanted = {} -- left to the game: no rows of ours
 	end
 	local container = containers[unitFrame]
 

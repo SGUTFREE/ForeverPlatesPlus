@@ -176,6 +176,68 @@ local function InitDB()
 	end
 	db.version = 4
 	ns.db = db
+
+	-- your own presets, shared by all your characters (account-wide)
+	ForeverPlatesPlusDB = type(ForeverPlatesPlusDB) == "table" and ForeverPlatesPlusDB or {}
+	if type(ForeverPlatesPlusDB.presets) ~= "table" then
+		ForeverPlatesPlusDB.presets = {}
+	end
+	ns.accountDb = ForeverPlatesPlusDB
+end
+
+------------------------------------------------------------------------
+-- your own presets: a snapshot of the preset choice and your changes, for any of your characters
+------------------------------------------------------------------------
+
+local function CopyTable(source)
+	local copy = {}
+	for key, value in pairs(source) do
+		copy[key] = value
+	end
+	return copy
+end
+
+-- names of your presets, sorted
+function ns.UserPresetNames()
+	local names = {}
+	for name in pairs(ns.accountDb and ns.accountDb.presets or {}) do
+		table.insert(names, name)
+	end
+	table.sort(names)
+	return names
+end
+
+-- save this character's settings under a name (an existing one is overwritten)
+function ns.SaveUserPreset(name)
+	name = type(name) == "string" and strtrim(name) or ""
+	if name == "" or not ns.accountDb then
+		return false
+	end
+	ns.accountDb.presets[name] = { preset = ns.db.preset, overrides = CopyTable(ns.db.overrides) }
+	return true
+end
+
+-- this character takes the saved preset: its preset choice and its changes replace the current ones
+function ns.ApplyUserPreset(name)
+	local saved = ns.accountDb and ns.accountDb.presets[name]
+	if type(saved) ~= "table" then
+		return false
+	end
+	ns.db.preset = type(saved.preset) == "string" and saved.preset or "auto"
+	wipe(ns.db.overrides)
+	for key, value in pairs(type(saved.overrides) == "table" and saved.overrides or {}) do
+		ns.db.overrides[key] = value
+	end
+	ns.Refresh()
+	return true
+end
+
+function ns.DeleteUserPreset(name)
+	if ns.accountDb and ns.accountDb.presets[name] then
+		ns.accountDb.presets[name] = nil
+		return true
+	end
+	return false
 end
 
 function ns.GetPlayerClass()
@@ -485,6 +547,12 @@ SlashCmdList.FOREVERPLATESPLUS = function(msg)
 		end
 		Print(L.KZ_SPELL_SET, ns.KillZoneSummary and ns.KillZoneSummary() or "")
 
+	elseif cmd == "killzone" then
+		-- a hidden extra: the execute mark and its own settings page (after /reload)
+		local on = not ns.Get("killzone.enabled")
+		ns.Set("killzone.enabled", on)
+		Print(on and L.KZ_ON_DONE or L.KZ_OFF_DONE)
+
 	elseif cmd == "debug" then
 		if ns.DebugNames then
 			ns.DebugNames()
@@ -492,7 +560,7 @@ SlashCmdList.FOREVERPLATESPLUS = function(msg)
 
 	elseif cmd == "status" then
 		Print(L.STATUS:format(ns.GetActivePreset(), ns.CountOverrides()))
-		if ns.KillZoneSummary then
+		if ns.KillZoneSummary and ns.Get("killzone.enabled") then -- a hidden extra: silent while off
 			Print(L.SECTION_KILLZONE .. ": " .. ns.KillZoneSummary())
 		end
 
