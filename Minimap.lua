@@ -47,7 +47,7 @@ local function ShowTooltip(owner)
 end
 
 local function CreateButton()
-	button = CreateFrame("Button", "ForeverPlatesMinimapButton", Minimap)
+	button = CreateFrame("Button", "ForeverPlatesPlusMinimapButton", Minimap)
 	button:SetSize(31, 31)
 	button:SetFrameStrata("MEDIUM")
 	button:SetFrameLevel(8)
@@ -105,6 +105,6 @@ function M:Apply(key)
 end
 
 -- addon compartment (the addons button next to the minimap); referenced from the .toc
-function ForeverPlates_OnAddonCompartmentClick()
+function ForeverPlatesPlus_OnAddonCompartmentClick()
 	ns.OpenOptions()
 end

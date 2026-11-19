@@ -4,14 +4,14 @@
 
 ## Как заполнить
 
-1. **Name:** `ForeverPlates`
+1. **Name:** `ForeverPlatesPlus`
 2. **Summary** (одна строка, видна в поиске, на самой странице её нет), на двух языках:
-   `The default Forever nameplates in the game's own style, with customization the built-in settings can't offer. / Стандартные неймплейты Forever в родном стиле игры — с настройками, которых нет в стандартном меню.`
+   `Forever's own nameplate look, plus what the game menu lacks: size, color, position, timers and more. / Родной вид неймплейтов Forever плюс то, чего нет в меню игры: размер, цвет, место, таймеры и не только.`
    Если форма не примет такую длину — только английская половина.
 3. **Avatar:** `media/logo.png` (1024×1024).
 4. **Description:** включить режим Markdown и вставить всё из блока «Описание» ниже (английский сверху, русский под ним).
 5. **Images:** скриншоты из таблицы «Скриншоты» ниже, с их подписями.
-6. **File:** архив `ForeverPlates-<версия>.zip`, игра — **Forever** (Interface 16001). В поле Changelog — пункты нужной версии из `CHANGELOG.md`.
+6. **File:** архив `ForeverPlatesPlus-<версия>.zip`, игра — **Forever** (Interface 16001). В поле Changelog — пункты нужной версии из `CHANGELOG.md`.
 
 ---
 
@@ -19,11 +19,11 @@
 
 <!-- копировать отсюда -->
 
-# ForeverPlates
+# ForeverPlatesPlus
 
-**The default Forever nameplates in the game's own style, with customization the built-in settings can't offer.**
+**Forever's own nameplate look, plus what the game menu lacks: size, color, position, timers and more.**
 
-ForeverPlates doesn't replace or reskin the nameplates. It works with the game's own: it turns on the useful game options and adds the settings and elements the game menu doesn't have.
+ForeverPlatesPlus doesn't replace or reskin the nameplates. It works with the game's own: it turns on the useful game options and adds the settings and elements the game menu doesn't have.
 
 ## How the settings work
 
@@ -57,11 +57,11 @@ Text on the health and power bars of your frame, your target and your target's t
 
 ---
 
-# ForeverPlates (на русском)
+# ForeverPlatesPlus (на русском)
 
-**Стандартные неймплейты Forever в родном стиле игры — с настройками, которых нет в стандартном меню.**
+**Родной вид неймплейтов Forever плюс то, чего нет в меню игры: размер, цвет, место, таймеры и не только.**
 
-ForeverPlates не заменяет и не перерисовывает неймплейты. Он работает с неймплейтами самой игры: включает полезные настройки игры и добавляет настройки и элементы, которых нет в её меню.
+ForeverPlatesPlus не заменяет и не перерисовывает неймплейты. Он работает с неймплейтами самой игры: включает полезные настройки игры и добавляет настройки и элементы, которых нет в её меню.
 
 ## Как устроены настройки
 
@@ -95,7 +95,7 @@ ForeverPlates не заменяет и не перерисовывает ней�
 
 ---
 
-Source code and issues / Исходный код и баг-репорты: [github.com/SGUTFREE/ForeverPlates](https://github.com/SGUTFREE/ForeverPlates)
+Source code and issues / Исходный код и баг-репорты: [github.com/SGUTFREE/ForeverPlatesPlus](https://github.com/SGUTFREE/ForeverPlatesPlus)
 
 <!-- копировать до сюда -->
 

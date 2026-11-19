@@ -1,7 +1,7 @@
 local _, ns = ...
 local L = ns.L
 
--- Settings panel: Esc > Options > AddOns > ForeverPlates (or /fpl, or the minimap button).
+-- Settings panel: Esc > Options > AddOns > ForeverPlatesPlus (or /fpl, or the minimap button).
 --
 -- The main page holds the preset and what concerns every plate. Then one page per kind of nameplate:
 -- Враг, Союзник, Питомец союзника. Each starts with a sketch of that nameplate; clicking a part of it
@@ -23,7 +23,7 @@ local usedVariables = {}
 -- the settings variable for a key; a key shown in two places (the enemy's shared aura row offset)
 -- gets a second variable, both kept in sync by OnSettingsRefreshed
 local function Var(key)
-	local base = "FOREVERPLATES_" .. key:gsub("%.", "_"):upper()
+	local base = "FOREVERPLATESPLUS_" .. key:gsub("%.", "_"):upper()
 	local name, n = base, 1
 	while usedVariables[name] do
 		n = n + 1
@@ -110,17 +110,17 @@ end
 
 -- Drawn with our template (Options.xml): the game's section header, re-styled as wrapped body text.
 -- Without it (template or game mixin missing) the text goes into a header's tooltip instead.
-local DESCRIPTION_TEMPLATE = "ForeverPlatesDescriptionTemplate"
+local DESCRIPTION_TEMPLATE = "ForeverPlatesPlusDescriptionTemplate"
 local DESCRIPTION_WIDTH = 560
 local CHARS_PER_LINE = 95
 local LINE_HEIGHT = 15
 
 local function SetUpDescriptionMixin()
-	if ForeverPlatesDescriptionMixin or not SettingsListSectionHeaderMixin then
-		return ForeverPlatesDescriptionMixin ~= nil
+	if ForeverPlatesPlusDescriptionMixin or not SettingsListSectionHeaderMixin then
+		return ForeverPlatesPlusDescriptionMixin ~= nil
 	end
-	ForeverPlatesDescriptionMixin = CreateFromMixins(SettingsListSectionHeaderMixin)
-	function ForeverPlatesDescriptionMixin:Init(initializer)
+	ForeverPlatesPlusDescriptionMixin = CreateFromMixins(SettingsListSectionHeaderMixin)
+	function ForeverPlatesPlusDescriptionMixin:Init(initializer)
 		SettingsListSectionHeaderMixin.Init(self, initializer)
 		local title = self.Title
 		title:SetFontObject("GameFontHighlight")
@@ -336,7 +336,7 @@ end
 -- pages
 ------------------------------------------------------------------------
 
-local SKETCH_TEMPLATE = "ForeverPlatesPreviewTemplate"
+local SKETCH_TEMPLATE = "ForeverPlatesPlusPreviewTemplate"
 
 -- a page for one kind of nameplate (or the unit frames): description, sketch, list of parts
 local function NameplatePage(kind, name, about, parts, sketchTitle, partLabel)
@@ -774,7 +774,7 @@ end
 function M:OnLogin()
 	local ok, err = pcall(Build)
 	if not ok then
-		geterrorhandler()("ForeverPlates options: " .. tostring(err))
+		geterrorhandler()("ForeverPlatesPlus options: " .. tostring(err))
 	end
 end
 

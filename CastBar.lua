@@ -138,7 +138,7 @@ local function OnUpdate(holder, elapsed)
 	end
 	if not ok then
 		holder:SetScript("OnUpdate", nil) -- don't repeat an error every frame
-		geterrorhandler()("ForeverPlates CastBar: " .. tostring(err))
+		geterrorhandler()("ForeverPlatesPlus CastBar: " .. tostring(err))
 	end
 end
 

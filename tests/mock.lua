@@ -1,4 +1,4 @@
--- Minimal WoW API mock for exercising ForeverPlates outside the game.
+-- Minimal WoW API mock for exercising ForeverPlatesPlus outside the game.
 -- Only what the addon touches; every frame method not listed is a recorded no-op.
 
 LOG = {}
@@ -533,7 +533,7 @@ if DESCRIPTIONS_AVAILABLE then
 	end
 	local getTemplateInfo = C_XMLUtil.GetTemplateInfo
 	C_XMLUtil.GetTemplateInfo = function(name)
-		if name == "ForeverPlatesDescriptionTemplate" or name == "ForeverPlatesPreviewTemplate" then return {} end
+		if name == "ForeverPlatesPlusDescriptionTemplate" or name == "ForeverPlatesPlusPreviewTemplate" then return {} end
 		return getTemplateInfo(name)
 	end
 end

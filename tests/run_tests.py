@@ -1,4 +1,4 @@
-"""Load ForeverPlates into a mocked WoW API and check its behaviour.
+"""Load ForeverPlatesPlus into a mocked WoW API and check its behaviour.
 
 usage: python3 -I run_tests.py <addon_dir> <harness_dir>
 """
@@ -9,7 +9,7 @@ import sys
 from lupa import lua51
 
 addon_dir, harness_dir = sys.argv[1], sys.argv[2]
-toc = open(os.path.join(addon_dir, "ForeverPlates.toc"), encoding="utf-8").read()
+toc = open(os.path.join(addon_dir, "ForeverPlatesPlus.toc"), encoding="utf-8").read()
 files = [l.strip() for l in toc.splitlines() if l.strip().endswith(".lua")]
 
 failures = []
@@ -34,7 +34,7 @@ def new_runtime(locale="ruRU", player_class="PRIEST", cvars_override=None):
     for f in files:
         code = open(os.path.join(addon_dir, f), encoding="utf-8").read()
         chunk = L.execute("return function(code, name) local fn, err = loadstring(code, name); if not fn then error(err) end; return fn end")(code, f)
-        chunk("ForeverPlates", ns)
+        chunk("ForeverPlatesPlus", ns)
     return L, ns
 
 
@@ -50,12 +50,12 @@ for f in files:
     code = open(os.path.join(addon_dir, f), encoding="utf-8").read()
     for m in re.finditer(r"^(\w+)\s*=", code, re.M):
         name = m.group(1)
-        check(name in ("ForeverPlatesCharDB", "SLASH_FOREVERPLATES1", "SLASH_FOREVERPLATES2"), f"{f}: global assignment {name} is expected")
+        check(name in ("ForeverPlatesPlusCharDB", "SLASH_FOREVERPLATESPLUS1", "SLASH_FOREVERPLATESPLUS2"), f"{f}: global assignment {name} is expected")
 
 # ---------------------------------------------------------------- priest, full flow
 L, ns = new_runtime()
 G = L.globals()
-G.FireEvent("ADDON_LOADED", "ForeverPlates")
+G.FireEvent("ADDON_LOADED", "ForeverPlatesPlus")
 G.FireEvent("PLAYER_LOGIN")
 G.FireEvent("PLAYER_ENTERING_WORLD")
 G.RunTimers()
@@ -75,7 +75,7 @@ check(cv["nameplateShowOnlyNameForFriendlyPlayerUnits"] == "1" and cv["nameplate
 ns.Set("look.friendName.color", "class")
 check(cv["nameplateUseClassColorForFriendlyPlayerUnitNames"] == "1", "ally name colour 'class' = the game's own class colour (works in dungeons too)")
 ns.Set("look.friendName.color", "white")
-check(cv["nameplateUseClassColorForFriendlyPlayerUnitNames"] == "0" and G.SETTINGS["FOREVERPLATES_LOOK_FRIENDNAME_COLOR"].page == "Союзник", "colour choice on the Ally page")
+check(cv["nameplateUseClassColorForFriendlyPlayerUnitNames"] == "0" and G.SETTINGS["FOREVERPLATESPLUS_LOOK_FRIENDNAME_COLOR"].page == "Союзник", "colour choice on the Ally page")
 ns.Set("native.friendNamesOnly", "never")
 check(cv["nameplateShowOnlyNameForFriendlyPlayerUnits"] == "0", "'never': ally plates with health bars")
 ns.Set("native.friendNamesOnly", "instance")
@@ -95,7 +95,7 @@ check(cv["nameplateShowFriendlyPlayerMinions"] == "0" and cv["UnitNameFriendlyMi
 ns.Set("plates.petNamesOnly", True)
 check(cv["nameplateShowFriendlyPlayerMinions"] == "1" and cv["UnitNameFriendlyMinionName"] == "0", "pets option on again")
 ns.Set("native.friendNamesOnly", "always")
-check(G.SETTINGS["FOREVERPLATES_NATIVE_FRIENDNAMESONLY"] is not None, "names-only dropdown in the panel")
+check(G.SETTINGS["FOREVERPLATESPLUS_NATIVE_FRIENDNAMESONLY"] is not None, "names-only dropdown in the panel")
 sets_after_login = G.CVAR_SETS
 G.FireEvent("PLAYER_ENTERING_WORLD"); G.RunTimers()
 check(G.CVAR_SETS == sets_after_login, "re-applying unchanged settings writes no CVars")
@@ -103,9 +103,9 @@ check(G.CVAR_SETS == sets_after_login, "re-applying unchanged settings writes no
 # settings panel
 S = G.SETTINGS
 check(S.registered is not None, "settings category registered")
-preset_setting = S["FOREVERPLATES_PROFILE_PRESET"]
+preset_setting = S["FOREVERPLATESPLUS_PROFILE_PRESET"]
 check(preset_setting is not None and preset_setting.default == "auto", "preset dropdown default is auto")
-check(S["FOREVERPLATES_NATIVE_LOSFADE"] is not None, "LOS slider shown when client has the CVar")
+check(S["FOREVERPLATESPLUS_NATIVE_LOSFADE"] is not None, "LOS slider shown when client has the CVar")
 
 # nameplates
 L.execute('UNITS.nameplate1 = { canAttack = true, isPlayer = false, isFriend = false, maxHealth = 1200 }')
@@ -178,7 +178,7 @@ p3 = points("nameplate3")
 check(len(p3) == 2 and p3[0][0] == "BOTTOMLEFT" and p3[1][0] == "RIGHT", "full names off: the game's points are back")
 ns.Set("plates.friendFullNames", True)
 check(len(points("nameplate3")) == 1, "full names on again")
-check(G.SETTINGS["FOREVERPLATES_PLATES_FRIENDFULLNAMES"] is not None, "full names checkbox in the panel")
+check(G.SETTINGS["FOREVERPLATESPLUS_PLATES_FRIENDFULLNAMES"] is not None, "full names checkbox in the panel")
 # guild names (off by default)
 L.execute('UNITS.nameplate3.guild = "Орда навсегда"; UNITS.nameplate2.guild = "Альянс"')
 G.FireEvent("UNIT_NAME_UPDATE", "nameplate3")
@@ -211,12 +211,12 @@ ns.Set("look.friendGuild.place", "auto"); ns.Set("look.friendGuild.y", 0)
 check(g3.points[1][1] == "BOTTOM", "auto place: above again")
 ns.Set("plates.guildFriends", False); ns.Set("plates.guildEnemies", False)
 check(not g3.shown and not g2.shown, "guild names off again")
-check(S["FOREVERPLATES_PLATES_GUILDFRIENDS"].page == "Союзник" and S["FOREVERPLATES_PLATES_GUILDENEMIES"].page == "Враг", "guild options on the Ally and Enemy pages")
+check(S["FOREVERPLATESPLUS_PLATES_GUILDFRIENDS"].page == "Союзник" and S["FOREVERPLATESPLUS_PLATES_GUILDENEMIES"].page == "Враг", "guild options on the Ally and Enemy pages")
 L.execute('UNITS.nameplate3.guild = nil; UNITS.nameplate2.guild = nil')
 
 # name size
 check(abs(uf("nameplate1").name.textScale - 1.15) < 1e-9 and abs(uf("nameplate3").name.textScale - 1.15) < 1e-9, "names 15% bigger by default, enemies and allies")
-check(S["FOREVERPLATES_LOOK_ENEMYNAME_SCALE"].page == "Враг" and S["FOREVERPLATES_LOOK_FRIENDNAME_SCALE"].page == "Союзник", "name sizes on the Enemy and Ally pages")
+check(S["FOREVERPLATESPLUS_LOOK_ENEMYNAME_SCALE"].page == "Враг" and S["FOREVERPLATESPLUS_LOOK_FRIENDNAME_SCALE"].page == "Союзник", "name sizes on the Enemy and Ally pages")
 ns.Set("look.enemyName.scale", 100)
 check(uf("nameplate1").name.textScale == 1 and abs(uf("nameplate3").name.textScale - 1.15) < 1e-9, "enemy names at 100%: the game's size back, allies unchanged")
 ns.Set("look.enemyName.scale", 115)
@@ -245,7 +245,7 @@ check(pet.HealthBarsContainer.alpha == 0, "on again")
 check(uf("nameplate1").HealthBarsContainer.alpha is None, "enemy plate parts untouched")
 G.FireEvent("NAME_PLATE_UNIT_REMOVED", "nameplate6")
 check(pet.HealthBarsContainer.alpha == 1 and pet.name.alpha == 1, "removed pet plate gets everything back before reuse")
-check(G.SETTINGS["FOREVERPLATES_PLATES_PETNAMESONLY"] is not None, "pets checkbox in the panel")
+check(G.SETTINGS["FOREVERPLATESPLUS_PLATES_PETNAMESONLY"] is not None, "pets checkbox in the panel")
 # pet coloured by its owner's class
 L.execute('UNITS.nameplate7 = { canAttack = false, isPlayer = false, isFriend = true, isPet = true, maxHealth = 500, name = "Костя", ownerLine = "Питомец Бу" }')
 G.MakePlate("nameplate7"); G.FireEvent("NAME_PLATE_UNIT_ADDED", "nameplate7"); G.RunTimers()
@@ -280,7 +280,7 @@ check(not sub7.shown, "owner line can be turned off")
 ns.Set("plates.petOwner", True)
 G.PRINTS = L.table()
 L.execute("PLATES.mouseover = PLATES.nameplate7; UNITS.mouseover = UNITS.nameplate7")
-G.SlashCmdList.FOREVERPLATES("debug")
+G.SlashCmdList.FOREVERPLATESPLUS("debug")
 dbg = " | ".join(G.PRINTS[i] for i in range(1, len(G.PRINTS) + 1))
 check("pet=coloured owner=WARLOCK" in dbg, "/fpl debug shows the pet's owner class: " + dbg[-80:])
 L.execute("PLATES.mouseover = nil; UNITS.mouseover = nil")
@@ -294,7 +294,7 @@ ns.Set("look.petName.color", "class")
 L.execute('UNITS.party1 = nil')
 G.FireEvent("NAME_PLATE_UNIT_REMOVED", "nameplate7")
 check(len(points("nameplate7")) == 2, "removed pet plate: the game's name points back")
-check(G.SETTINGS["FOREVERPLATES_LOOK_FRIENDNAME_ALPHA"] is not None and G.SETTINGS["FOREVERPLATES_LOOK_PETNAME_ALPHA"] is not None, "opacity sliders for allies and pets")
+check(G.SETTINGS["FOREVERPLATESPLUS_LOOK_FRIENDNAME_ALPHA"] is not None and G.SETTINGS["FOREVERPLATESPLUS_LOOK_PETNAME_ALPHA"] is not None, "opacity sliders for allies and pets")
 # the game switches the ally to name-only and lays it out again
 uf("nameplate3").showOnlyName = True
 uf("nameplate3").UpdateAnchors(uf("nameplate3"))
@@ -302,7 +302,7 @@ p3 = points("nameplate3")
 check(len(p3) == 1 and p3[0][0] == "BOTTOM" and p3[0][2] == "TOP" and p3[0][3] == 0 and p3[0][4] == 2, "name-only ally: one point, centred above, not cut")
 L.execute("PLATES.mouseover = PLATES.nameplate3; UNITS.mouseover = UNITS.nameplate3")
 G.PRINTS = L.table()
-G.SlashCmdList.FOREVERPLATES("debug")
+G.SlashCmdList.FOREVERPLATESPLUS("debug")
 dbg = " | ".join(G.PRINTS[i] for i in range(1, len(G.PRINTS) + 1))
 check("onlyName=true" in dbg and "ours=true" in dbg and "[BOTTOM bars TOP 0 2]" in dbg, "/fpl debug reports the name state: " + dbg[:160])
 L.execute("PLATES.mouseover = nil; UNITS.mouseover = nil")
@@ -335,7 +335,7 @@ hb1.showPercentage = False; hb1.TextString.shown = True
 hb1.UpdateTextStringWithValues(hb1, hb1.TextString, 5432)
 check(hb1.TextString.text == "5.4к", "number only (no percent): main text formatted")
 hb1.showPercentage = True
-check(G.SETTINGS["FOREVERPLATES_HEALTH_FORMAT"] is not None and G.SETTINGS["FOREVERPLATES_HEALTH_DECIMALS"] is not None, "format settings in the panel")
+check(G.SETTINGS["FOREVERPLATESPLUS_HEALTH_FORMAT"] is not None and G.SETTINGS["FOREVERPLATESPLUS_HEALTH_DECIMALS"] is not None, "format settings in the panel")
 check(G.ABBREV_CONFIGS > 0, "abbreviation config accepted (valid breakpoints)")
 
 # early aggro warning
@@ -369,7 +369,7 @@ ns.Set("threat.warn", False)
 check(not t1.shown, "can be turned off")
 ns.Set("threat.warn", True); ns.Set("threat.warnFrom", 70)
 G.IN_GROUP = False; G.FireEvent("GROUP_ROSTER_UPDATE")
-check(G.SETTINGS["FOREVERPLATES_THREAT_WARN"] is not None and G.SETTINGS["FOREVERPLATES_THREAT_WARNFROM"] is not None, "aggro warning settings in the panel")
+check(G.SETTINGS["FOREVERPLATESPLUS_THREAT_WARN"] is not None and G.SETTINGS["FOREVERPLATESPLUS_THREAT_WARNFROM"] is not None, "aggro warning settings in the panel")
 
 # ---- settings pages
 first = G.SETTINGS.layout.inits[1]
@@ -377,12 +377,12 @@ check(first.header == ns.L.ABOUT_PAGE and first.tooltip == ns.L.ABOUT_MAIN, "no 
 pages = list(G.SETTINGS.pages.values())
 check(pages == ["Враг", "Союзник", "Питомец союзника", "Фреймы"], "settings split by nameplate, then frames: " + ", ".join(pages))
 S = G.SETTINGS
-check(S["FOREVERPLATES_PROFILE_PRESET"].page == "ForeverPlates" and S["FOREVERPLATES_NATIVE_MANAGE"].page == "ForeverPlates" and S["FOREVERPLATES_NATIVE_ALWAYSSHOW"].page == "ForeverPlates", "preset, general and all-plates options on the main page")
+check(S["FOREVERPLATESPLUS_PROFILE_PRESET"].page == "ForeverPlatesPlus" and S["FOREVERPLATESPLUS_NATIVE_MANAGE"].page == "ForeverPlatesPlus" and S["FOREVERPLATESPLUS_NATIVE_ALWAYSSHOW"].page == "ForeverPlatesPlus", "preset, general and all-plates options on the main page")
 for k in ("ENEMYTEXT_IDLE", "INFO_QUEST", "CAST_TIMER", "CAST_INTERRUPTREADY", "AURAS_PURGE", "NATIVE_NPCBUFFS", "FADE_RANGE", "NATIVE_STACKENEMIES", "THREAT_WARN", "KILLZONE_ENABLED", "NATIVE_MAXDISTANCE"):
-    check(S["FOREVERPLATES_" + k].page == "Враг", f"{k} on the Enemy page")
-check(S["FOREVERPLATES_NATIVE_FRIENDNAMESONLY"].page == "Союзник" and S["FOREVERPLATES_AURAS_DISPEL"].page == "Союзник", "ally look and dispel row on the Ally page")
-check(S["FOREVERPLATES_PLATES_PETNAMESONLY"].page == "Питомец союзника" and S["FOREVERPLATES_PLATES_PETOWNER"].page == "Питомец союзника", "pets on their own page")
-check(S["FOREVERPLATES_NATIVE_HEALTHVALUE"] is None and S["FOREVERPLATES_NATIVE_FRIENDCLASSCOLOR"] is None, "doubled options gone: health number switches (chosen per state instead), class colour checkbox (a colour choice instead)")
+    check(S["FOREVERPLATESPLUS_" + k].page == "Враг", f"{k} on the Enemy page")
+check(S["FOREVERPLATESPLUS_NATIVE_FRIENDNAMESONLY"].page == "Союзник" and S["FOREVERPLATESPLUS_AURAS_DISPEL"].page == "Союзник", "ally look and dispel row on the Ally page")
+check(S["FOREVERPLATESPLUS_PLATES_PETNAMESONLY"].page == "Питомец союзника" and S["FOREVERPLATESPLUS_PLATES_PETOWNER"].page == "Питомец союзника", "pets on their own page")
+check(S["FOREVERPLATESPLUS_NATIVE_HEALTHVALUE"] is None and S["FOREVERPLATESPLUS_NATIVE_FRIENDCLASSCOLOR"] is None, "doubled options gone: health number switches (chosen per state instead), class colour checkbox (a colour choice instead)")
 
 # ---- execute mark: only on the target, drawn as a line by default
 ns.Set("killzone.targetOnly", True)
@@ -405,15 +405,15 @@ check(not kz1[0].shown, "target dropped: mark hidden")
 ns.Set("killzone.targetOnly", False)
 
 # ---- nameplate distance (a game option)
-check(cv["nameplateMaxDistance"] == "41" and S["FOREVERPLATES_NATIVE_MAXDISTANCE"].get() == 41, "distance untouched until changed; panel shows the game's value")
-S["FOREVERPLATES_NATIVE_MAXDISTANCE"].set(30)
+check(cv["nameplateMaxDistance"] == "41" and S["FOREVERPLATESPLUS_NATIVE_MAXDISTANCE"].get() == 41, "distance untouched until changed; panel shows the game's value")
+S["FOREVERPLATESPLUS_NATIVE_MAXDISTANCE"].set(30)
 check(cv["nameplateMaxDistance"] == "30", "distance slider writes the game option")
 
 # ---- game options left to the game until changed
 check(cv["nameplateShowEnemyMinions"] == "1" and cv["nameplateShowEnemyMinus"] == "0" and cv["nameplateSimplifiedTypes"] == "3", "minion/minor options untouched until changed")
-check(S["FOREVERPLATES_NATIVE_ENEMYMINIONS"].get() is True and S["FOREVERPLATES_NATIVE_ENEMYMINUS"].get() is False and S["FOREVERPLATES_NATIVE_SMALLMINUS"].get() is True, "panel shows the game's current values")
-S["FOREVERPLATES_NATIVE_ENEMYMINUS"].set(True)
-S["FOREVERPLATES_NATIVE_SMALLMINIONS"].set(False)
+check(S["FOREVERPLATESPLUS_NATIVE_ENEMYMINIONS"].get() is True and S["FOREVERPLATESPLUS_NATIVE_ENEMYMINUS"].get() is False and S["FOREVERPLATESPLUS_NATIVE_SMALLMINUS"].get() is True, "panel shows the game's current values")
+S["FOREVERPLATESPLUS_NATIVE_ENEMYMINUS"].set(True)
+S["FOREVERPLATESPLUS_NATIVE_SMALLMINIONS"].set(False)
 check(cv["nameplateShowEnemyMinus"] == "1" and cv["nameplateSimplifiedTypes"] == "2", "changing them writes the game options")
 
 # ---- purgeable enemy buffs row
@@ -551,7 +551,7 @@ ns.Set("enemyText.idle", "none")
 L.execute("PLATES.target = nil")
 G.FireEvent("PLAYER_TARGET_CHANGED")
 check(all(t.alpha == 0 for t in texts("nameplate1")), "target cleared: numbers hidden again")
-for k in ("FOREVERPLATES_ENEMYTEXT_IDLE", "FOREVERPLATES_ENEMYTEXT_MOUSEOVER", "FOREVERPLATES_ENEMYTEXT_TARGET", "FOREVERPLATES_PLATES_ENEMYFULLNAMES"):
+for k in ("FOREVERPLATESPLUS_ENEMYTEXT_IDLE", "FOREVERPLATESPLUS_ENEMYTEXT_MOUSEOVER", "FOREVERPLATESPLUS_ENEMYTEXT_TARGET", "FOREVERPLATESPLUS_PLATES_ENEMYFULLNAMES"):
     check(G.SETTINGS[k] is not None, f"setting {k} in the panel")
 ns.Set("plates.friendHealth", "both")
 check(all(t.alpha == 1 and t.width == 0 and t.wordWrap is True for t in texts("nameplate3")), "ally numbers 'both': health text on allies again (auto width, wrap restored)")
@@ -561,7 +561,7 @@ ns.Set("plates.friendHealth", "none")
 check(all(t.alpha == 0 for t in texts("nameplate3")), "ally numbers off again")
 
 # minimap button
-mb = [f for f in G.ALL_FRAMES.values() if f.name == "ForeverPlatesMinimapButton"]
+mb = [f for f in G.ALL_FRAMES.values() if f.name == "ForeverPlatesPlusMinimapButton"]
 check(len(mb) == 1 and mb[0].shown, "minimap button created and shown")
 mb = mb[0]
 mb.scripts["OnClick"](mb)
@@ -573,9 +573,9 @@ check(not mb.shown, "minimap button can be hidden")
 ns.Set("ui.minimap", True)
 check(mb.shown, "and shown again")
 G.SETTINGS.opened = None
-G.ForeverPlates_OnAddonCompartmentClick()
+G.ForeverPlatesPlus_OnAddonCompartmentClick()
 check(G.SETTINGS.opened == 42, "addon compartment entry opens the settings")
-check(G.SETTINGS["FOREVERPLATES_PLATES_FRIENDHEALTH"] is not None and G.SETTINGS["FOREVERPLATES_UI_MINIMAP"] is not None, "ally numbers and minimap in the settings panel")
+check(G.SETTINGS["FOREVERPLATESPLUS_PLATES_FRIENDHEALTH"] is not None and G.SETTINGS["FOREVERPLATESPLUS_UI_MINIMAP"] is not None, "ally numbers and minimap in the settings panel")
 
 # changing settings
 ns.Set("look.mine.scale", 150)
@@ -604,7 +604,7 @@ check(kz1[0].value == 520, "uses the player's own rank of the spell (looked up b
 L.execute('SPELL_BY_NAME["Слово Тьмы: Смерть"] = nil; SPELLS[48158] = nil')
 G.FireEvent("SPELLS_CHANGED"); G.RunTimers()
 G.PRINTS = L.table()
-G.SlashCmdList.FOREVERPLATES("status")
+G.SlashCmdList.FOREVERPLATESPLUS("status")
 check(any("412" in G.PRINTS[i] and "Слово Тьмы: Смерть" in G.PRINTS[i] and "618" in G.PRINTS[i] for i in range(1, len(G.PRINTS) + 1)), "/fpl status shows the threshold, its source and the crit value")
 ns.Set("killzone.critMult", 200)
 check(cz1[0].value == 824, "crit damage 200% -> 824")
@@ -613,7 +613,7 @@ check(not cz1[0].shown and kz1[0].shown, "crit zone can be turned off")
 ns.Set("killzone.crit", True); ns.Set("killzone.critMult", 150)
 pn = ns.ParseSpellNumber
 check(pn("inflicts 1,234 to 1,400 Shadow damage") == 1234 and pn("наносит от 450 до 522 ед.") == 450 and pn("$s1 ед. урона") is None and pn("12\u00a0345 ед.") == 12345 and pn("Наносит 350. Затем 12") == 350, "description number parsing")
-G.SlashCmdList.FOREVERPLATES("kz 420")
+G.SlashCmdList.FOREVERPLATESPLUS("kz 420")
 check(kz1[0].value == 420 and ns.Get("killzone.value") == 420, "/fpl kz 420")
 check(preset_setting.notified > 0, "settings panel notified after changes")
 
@@ -634,22 +634,22 @@ check(kz1[0].shown, "next fight: shown again")
 check(len(G.ERRORS) == 0, "no errors through setting changes")
 
 # ---- pages by nameplate: pick a part, only its settings are listed
-pe = S["FOREVERPLATES_UI_PART_ENEMY"]
+pe = S["FOREVERPLATESPLUS_UI_PART_ENEMY"]
 shows = lambda var: S[var].init.ShouldShow(S[var].init)
 check(pe.page == "Враг" and [d.value for d in pe.getOptions().values()][:4] == ["plate", "name", "guild", "health"], "part list on the Enemy page")
 pe.set("plate")
-check(shows("FOREVERPLATES_NATIVE_STACKENEMIES") and not shows("FOREVERPLATES_LOOK_ENEMYNAME_SCALE") and not shows("FOREVERPLATES_INFO_QUEST"), "'whole nameplate': only its options listed")
+check(shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES") and not shows("FOREVERPLATESPLUS_LOOK_ENEMYNAME_SCALE") and not shows("FOREVERPLATESPLUS_INFO_QUEST"), "'whole nameplate': only its options listed")
 pe.set("quest")
-check(shows("FOREVERPLATES_INFO_QUEST") and shows("FOREVERPLATES_LOOK_QUEST_SCALE") and not shows("FOREVERPLATES_NATIVE_STACKENEMIES"), "quest marker part: show it or not, its size...")
+check(shows("FOREVERPLATESPLUS_INFO_QUEST") and shows("FOREVERPLATESPLUS_LOOK_QUEST_SCALE") and not shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES"), "quest marker part: show it or not, its size...")
 ns.Set("fade.range", False); pe.set("plate")
-check(not shows("FOREVERPLATES_FADE_RANGEALPHA"), "out-of-range opacity hidden while fading is off")
+check(not shows("FOREVERPLATESPLUS_FADE_RANGEALPHA"), "out-of-range opacity hidden while fading is off")
 ns.Set("fade.range", True)
-check(shows("FOREVERPLATES_FADE_RANGEALPHA"), "and listed when it is on")
+check(shows("FOREVERPLATESPLUS_FADE_RANGEALPHA"), "and listed when it is on")
 pe.set("name")
-check(shows("FOREVERPLATES_LOOK_ENEMYNAME_COLOR") and not shows("FOREVERPLATES_LOOK_ENEMYNAME_RGB"), "own colour swatch hidden until 'own' is picked")
+check(shows("FOREVERPLATESPLUS_LOOK_ENEMYNAME_COLOR") and not shows("FOREVERPLATESPLUS_LOOK_ENEMYNAME_RGB"), "own colour swatch hidden until 'own' is picked")
 ns.Set("look.enemyName.color", "custom")
-check(shows("FOREVERPLATES_LOOK_ENEMYNAME_RGB"), "own colour: swatch listed")
-S["FOREVERPLATES_LOOK_ENEMYNAME_RGB"].set("FF00FF00")
+check(shows("FOREVERPLATESPLUS_LOOK_ENEMYNAME_RGB"), "own colour: swatch listed")
+S["FOREVERPLATESPLUS_LOOK_ENEMYNAME_RGB"].set("FF00FF00")
 check(ns.Get("look.enemyName.rgb") == "ff00ff00" and list(uf("nameplate1").name.vertex.values()) == [0, 1, 0], "enemy name in its own colour")
 G.CompactUnitFrame_UpdateName(uf("nameplate1"))
 check(list(uf("nameplate1").name.vertex.values()) == [0, 1, 0], "kept after the game's name update")
@@ -661,11 +661,11 @@ check(abs(uf("nameplate2").name.vertex[1] - 0.67) < 1e-9, "class colour on an en
 ns.ResetLook("enemyName")
 check(ns.Get("look.enemyName.color") == "game", "reset: as in the game")
 pe.set("guild")
-check(shows("FOREVERPLATES_PLATES_GUILDENEMIES") and shows("FOREVERPLATES_LOOK_ENEMYGUILD_PLACE"), "guild part: show it, where to write it")
+check(shows("FOREVERPLATESPLUS_PLATES_GUILDENEMIES") and shows("FOREVERPLATESPLUS_LOOK_ENEMYGUILD_PLACE"), "guild part: show it, where to write it")
 # names
 ns.Set("look.enemyName.scale", 130)
 check(abs(uf("nameplate1").name.textScale - 1.3) < 1e-9 and abs(uf("nameplate3").name.textScale - 1.15) < 1e-9, "enemy name size: enemies only")
-S["FOREVERPLATES_LOOK_ENEMYNAME_SCALE"].set(117)
+S["FOREVERPLATESPLUS_LOOK_ENEMYNAME_SCALE"].set(117)
 check(ns.Get("look.enemyName.scale") == 115 and ns.db.overrides["look.enemyName.scale"] is None, "slider snaps to 5%; back at the preset value nothing is stored")
 ns.Set("look.friendName.x", 10); ns.Set("look.friendName.y", 3)
 p3 = points("nameplate3")
@@ -757,8 +757,8 @@ ns.ResetLook("gameCC")
 # our rows
 ns.Set("look.mine.alpha", 50)
 check(abs(b.alpha - 0.5) < 1e-9, "my debuff icons at 50%")
-S["FOREVERPLATES_LOOK_ADDONAURAS_X_2"].set(5)
-check(ns.Get("look.addonAuras.x") == 5 and c1.points[1][4] == 5 and S["FOREVERPLATES_LOOK_ADDONAURAS_X"].get() == 5, "one offset for the enemy's icon row, shown in both parts")
+S["FOREVERPLATESPLUS_LOOK_ADDONAURAS_X_2"].set(5)
+check(ns.Get("look.addonAuras.x") == 5 and c1.points[1][4] == 5 and S["FOREVERPLATESPLUS_LOOK_ADDONAURAS_X"].get() == 5, "one offset for the enemy's icon row, shown in both parts")
 ns.Set("look.dispel.y", 3)
 check(c1.points[1][4] == 5 and c3.points[1][4] == 0, "the ally row has its own offset")
 ns.Set("look.addonAuras.x", 0); ns.Set("look.mine.alpha", 100); ns.Set("look.dispel.y", 0)
@@ -772,7 +772,7 @@ L.execute("UNITS.nameplate1.quest = nil"); G.FireEvent("QUEST_LOG_UPDATE"); G.Ru
 # picking a part in the sketch; resetting a part with the button
 ns.SelectPart("enemy", "killzone")
 check(ns.db.parts["enemy"] == "killzone" and pe.get() == "killzone", "a part picked in the sketch is selected in the list")
-check(shows("FOREVERPLATES_KILLZONE_ENABLED") and shows("FOREVERPLATES_KILLZONE_VALUE") and not shows("FOREVERPLATES_KILLZONE_PERCENT"), "execute mark part: options of the current mode only")
+check(shows("FOREVERPLATESPLUS_KILLZONE_ENABLED") and shows("FOREVERPLATESPLUS_KILLZONE_VALUE") and not shows("FOREVERPLATESPLUS_KILLZONE_PERCENT"), "execute mark part: options of the current mode only")
 ns.Set("killzone.critMult", 200); ns.Set("info.quest", False)
 buttons = [i for i in G.SETTINGS.layouts["Враг"].inits.values() if i.button == ns.L.RESET_PART]
 visible = [i for i in buttons if all(fn() for fn in i.shown.values())]
@@ -845,35 +845,35 @@ ns.Set("frames.player.health", "missing"); ns.CopyFrameText("player")
 check(ns.Get("frames.target.health") == "missing" and ns.Get("frames.tot.health") == "missing" and ns.Get("frames.tot.scale") == 80, "the same on the other frames (sizes stay)")
 ns.ResetOverrides()
 check(phb.TextString.alpha == 1 and thb.TextString.alpha == 1 and po.center.text == "" and to.center.text == "", "all as in the game again: the game's texts back")
-pf = S["FOREVERPLATES_UI_PART_FRAMES"]
+pf = S["FOREVERPLATESPLUS_UI_PART_FRAMES"]
 check(pf.page == "Фреймы" and [d.value for d in pf.getOptions().values()] == ["plate", "player", "target", "tot"], "Frames page: numbers, your frame, target, target of target")
-check(S["FOREVERPLATES_FRAMES_ENABLED"] is None, "no separate switch for the block")
+check(S["FOREVERPLATESPLUS_FRAMES_ENABLED"] is None, "no separate switch for the block")
 pf.set("tot")
-check(shows("FOREVERPLATES_FRAMES_TOT_HEALTH") and not shows("FOREVERPLATES_FRAMES_PLAYER_HEALTH") and not shows("FOREVERPLATES_FRAMES_NUMBER"), "a frame's options listed alone")
+check(shows("FOREVERPLATESPLUS_FRAMES_TOT_HEALTH") and not shows("FOREVERPLATESPLUS_FRAMES_PLAYER_HEALTH") and not shows("FOREVERPLATESPLUS_FRAMES_NUMBER"), "a frame's options listed alone")
 pf.set("plate")
 check(len(G.ERRORS) == 0, "no errors on frames: " + "; ".join(G.ERRORS[i] for i in range(1, len(G.ERRORS) + 1)))
 
 # proxy settings round trip
-s = S["FOREVERPLATES_NATIVE_CASTICON"]
+s = S["FOREVERPLATESPLUS_NATIVE_CASTICON"]
 s.set(False)
 check(not bit("nameplateCastBarDisplay", 2) and s.get() is False, "checkbox proxy writes override and CVar")
-slider = S["FOREVERPLATES_AURAS_MINEMAX"]
+slider = S["FOREVERPLATESPLUS_AURAS_MINEMAX"]
 slider.set(4.4)
 check(ns.Get("auras.mineMax") == 4 and c1.groups["mine"].max == 4, "slider rounds to integer and updates max icons")
 
 # reset & presets
-G.SlashCmdList.FOREVERPLATES("reset")
+G.SlashCmdList.FOREVERPLATESPLUS("reset")
 L.execute("PLATES.target = PLATES.nameplate1")  # the preset shows the mark on the target only
 G.FireEvent("PLAYER_TARGET_CHANGED")
 check(ns.CountOverrides() == 0 and bit("nameplateCastBarDisplay", 2) and ns.Get("killzone.value") == 350 and ns.Get("killzone.mode") == "spell" and kz1[0].value == 412, "/fpl reset restores preset values (spell mode, 412)")
-for k in ("FOREVERPLATES_KILLZONE_COMBATONLY", "FOREVERPLATES_KILLZONE_SPELLBONUS"):
+for k in ("FOREVERPLATESPLUS_KILLZONE_COMBATONLY", "FOREVERPLATESPLUS_KILLZONE_SPELLBONUS"):
     check(S[k] is not None, f"setting {k} in the panel")
-check([d.value for d in S["FOREVERPLATES_KILLZONE_MODE"].getOptions().values()] == ["spell", "value", "percent"], "zone type dropdown: spell, value, percent")
-G.SlashCmdList.FOREVERPLATES("preset base")
+check([d.value for d in S["FOREVERPLATESPLUS_KILLZONE_MODE"].getOptions().values()] == ["spell", "value", "percent"], "zone type dropdown: spell, value, percent")
+G.SlashCmdList.FOREVERPLATESPLUS("preset base")
 check(ns.GetActivePreset() == "BASE" and not kz1[0].shown and not cz1[0].shown, "base preset turns the kill zone off")
-G.SlashCmdList.FOREVERPLATES("preset auto")
+G.SlashCmdList.FOREVERPLATESPLUS("preset auto")
 check(ns.GetActivePreset() == "PRIEST" and kz1[0].shown, "auto brings the priest preset back")
-G.SlashCmdList.FOREVERPLATES("preset nope")
+G.SlashCmdList.FOREVERPLATESPLUS("preset nope")
 check(ns.db.preset == "auto", "unknown preset is rejected")
 
 # removal
@@ -885,7 +885,7 @@ check(len(points("nameplate3")) == 2, "removed friendly plate gets the game's na
 check(uf("nameplate3").name.alpha == 1, "removed friendly plate gets full name opacity back before reuse")
 
 # game defaults
-G.SlashCmdList.FOREVERPLATES("gamedefaults")
+G.SlashCmdList.FOREVERPLATESPLUS("gamedefaults")
 check(cv["nameplateShowOffscreen"] == "1" and cv["nameplateInfoDisplay"] == "0" and ns.Get("native.manage") is False, "/fpl gamedefaults restores game values and stops managing")
 before = G.CVAR_SETS
 ns.Set("native.castIcon", False)
@@ -896,15 +896,15 @@ check(len(G.ERRORS) == 0, "no errors at the end: " + "; ".join(G.ERRORS[i] for i
 old = 'CVARS = { nameplateInfoDisplay = "0", nameplateCastBarDisplay = "0", nameplateThreatDisplay = "0", nameplateEnemyNpcAuraDisplay = "0", nameplateEnemyPlayerAuraDisplay = "0", nameplateFriendlyPlayerAuraDisplay = "0", nameplateMotion = "0", nameplateShowAll = "0", nameplateShowOffscreen = "1", nameplateShowFriendlyNpcs = "1", nameplateStyle = "0" }'
 L2, ns2 = new_runtime(locale="enUS", player_class="WARRIOR", cvars_override=old + "; DESCRIPTIONS_AVAILABLE = true")
 G2 = L2.globals()
-G2.FireEvent("ADDON_LOADED", "ForeverPlates"); G2.FireEvent("PLAYER_LOGIN"); G2.FireEvent("PLAYER_ENTERING_WORLD"); G2.RunTimers()
+G2.FireEvent("ADDON_LOADED", "ForeverPlatesPlus"); G2.FireEvent("PLAYER_LOGIN"); G2.FireEvent("PLAYER_ENTERING_WORLD"); G2.RunTimers()
 check(ns2.GetActivePreset() == "BASE", "class without a preset uses BASE")
 check(G2.CVARS["nameplateMotion"] == "1", "falls back to nameplateMotion when stacking types are missing")
-check(G2.SETTINGS["FOREVERPLATES_NATIVE_LOSFADE"] is None, "LOS slider hidden when the client lacks the CVar")
+check(G2.SETTINGS["FOREVERPLATESPLUS_NATIVE_LOSFADE"] is None, "LOS slider hidden when the client lacks the CVar")
 check(ns2.L.PART_MINE == "Personal debuffs" and ns2.L.PART_DISPEL == "Dispellable debuffs", "English strings on non-Russian clients, in the game's own terms")
 first = G2.SETTINGS.layout.inits[1]
-check(first.template == "ForeverPlatesDescriptionTemplate" and first.data["name"] == ns2.L.ABOUT_MAIN and first.GetExtent() >= 40, "page description drawn with our template, sized for its text")
+check(first.template == "ForeverPlatesPlusDescriptionTemplate" and first.data["name"] == ns2.L.ABOUT_MAIN and first.GetExtent() >= 40, "page description drawn with our template, sized for its text")
 fake = L2.eval("function() local f = CreateFrame('Frame'); f.Title = f:CreateFontString(); return f end")()
-G2.ForeverPlatesDescriptionMixin.Init(fake, first)
+G2.ForeverPlatesPlusDescriptionMixin.Init(fake, first)
 check(fake.Title.text == ns2.L.ABOUT_MAIN and fake.Title.width == 560 and fake.headerInit is not None, "description element: game header set up, then shown as wrapped text")
 L2.execute('UNITS.nameplate1 = { canAttack = true, isPlayer = false, maxHealth = 1000 }')
 G2.MakePlate("nameplate1"); G2.FireEvent("NAME_PLATE_UNIT_ADDED", "nameplate1"); G2.RunTimers()
@@ -934,9 +934,9 @@ check(len(pn2("nameplate1")) == 2, "Modern, enemy in target (numbers shown): the
 L2.execute("PLATES.target = nil"); G2.FireEvent("PLAYER_TARGET_CHANGED")
 check(len(pn2("nameplate1")) == 1, "target cleared: name free again")
 inits = G2.SETTINGS.layouts["Enemy"].inits
-check(inits[1].template == "ForeverPlatesDescriptionTemplate" and inits[2].template == "ForeverPlatesPreviewTemplate" and inits[2].data["kind"] == "enemy" and inits[2].GetExtent() == 200, "Enemy page: description, then the sketch")
+check(inits[1].template == "ForeverPlatesPlusDescriptionTemplate" and inits[2].template == "ForeverPlatesPlusPreviewTemplate" and inits[2].data["kind"] == "enemy" and inits[2].GetExtent() == 200, "Enemy page: description, then the sketch")
 sketch_frame = L2.eval("function() local f = CreateFrame('Frame'); f.Title = f:CreateFontString(); return f end")()
-G2.ForeverPlatesPreviewMixin.Init(sketch_frame, inits[2])
+G2.ForeverPlatesPlusPreviewMixin.Init(sketch_frame, inits[2])
 enemy_sketch = sketch_frame.fpSketches["enemy"]
 check(enemy_sketch is not None and sketch_frame.headerInit is not None and enemy_sketch.hint.text.startswith("The whole nameplate:"), "sketch drawn, the selected part explained under it: " + str(enemy_sketch.hint.text)[:60])
 guild_button = [x for x in enemy_sketch.buttons.values() if x.part == "guild"]
@@ -974,14 +974,14 @@ check(ns2.db.parts["frames"] == "target" and "Target:" in frames_sketch.hint.tex
 nbtn = [x for x in frames_sketch.buttons.values() if x.part == "plate"]
 check(len(nbtn) == 2 and frames_sketch.parts.numbers.text == "Number format: 12.3K", "a clickable label for how numbers are written")
 ns2.Set("frames.player.health", "game")
-check(G2.SETTINGS["FOREVERPLATES_UI_PART_ENEMY"] is not None and G2.SETTINGS["FOREVERPLATES_UI_PART_ENEMY"].control is None, "with the sketch on the page the part is picked there only (no second list)")
+check(G2.SETTINGS["FOREVERPLATESPLUS_UI_PART_ENEMY"] is not None and G2.SETTINGS["FOREVERPLATESPLUS_UI_PART_ENEMY"].control is None, "with the sketch on the page the part is picked there only (no second list)")
 check(len(G2.ERRORS) == 0, "no errors for warrior run")
 
 # ---------------------------------------------------------------- settings saved by 0.9 are carried over
-old_db = 'ForeverPlatesCharDB = { preset = "auto", overrides = { ["plates.nameScale"] = 130, ["plates.guild"] = "all", ["auras.mineSize"] = 33, ["plates.friendNameAlpha"] = 70, ["auras.purgeSize"] = 20 } }'
+old_db = 'ForeverPlatesPlusCharDB = { preset = "auto", overrides = { ["plates.nameScale"] = 130, ["plates.guild"] = "all", ["auras.mineSize"] = 33, ["plates.friendNameAlpha"] = 70, ["auras.purgeSize"] = 20 } }'
 L3, ns3 = new_runtime(cvars_override=old_db)
 G3 = L3.globals()
-G3.FireEvent("ADDON_LOADED", "ForeverPlates"); G3.FireEvent("PLAYER_LOGIN"); G3.RunTimers()
+G3.FireEvent("ADDON_LOADED", "ForeverPlatesPlus"); G3.FireEvent("PLAYER_LOGIN"); G3.RunTimers()
 o = ns3.db.overrides
 check(ns3.Get("look.enemyName.scale") == 130 and ns3.Get("look.friendName.scale") == 130, "old name size moves to both names")
 check(ns3.Get("plates.guildFriends") is True and ns3.Get("plates.guildEnemies") is True, "old 'guilds on allies and enemies' becomes both checkboxes")
@@ -990,10 +990,10 @@ check(o["plates.nameScale"] is None and o["plates.guild"] is None and o["auras.m
 check(len(G3.ERRORS) == 0, "no errors after carrying settings over")
 
 # ---------------------------------------------------------------- settings saved by 0.10 are carried over
-old_db = 'ForeverPlatesCharDB = { preset = "auto", version = 2, overrides = { ["look.guild.scale"] = 90, ["look.health.alpha"] = 70, ["look.friendName.alpha"] = 40, ["look.addonAuras.y"] = 3, ["native.friendClassColor"] = true, ["plates.petClassColor"] = false, ["plates.friendHealthText"] = true, ["auras.timer"] = false, ["native.healthValue"] = false } }'
+old_db = 'ForeverPlatesPlusCharDB = { preset = "auto", version = 2, overrides = { ["look.guild.scale"] = 90, ["look.health.alpha"] = 70, ["look.friendName.alpha"] = 40, ["look.addonAuras.y"] = 3, ["native.friendClassColor"] = true, ["plates.petClassColor"] = false, ["plates.friendHealthText"] = true, ["auras.timer"] = false, ["native.healthValue"] = false } }'
 L4, ns4 = new_runtime(cvars_override=old_db)
 G4 = L4.globals()
-G4.FireEvent("ADDON_LOADED", "ForeverPlates"); G4.FireEvent("PLAYER_LOGIN"); G4.RunTimers()
+G4.FireEvent("ADDON_LOADED", "ForeverPlatesPlus"); G4.FireEvent("PLAYER_LOGIN"); G4.RunTimers()
 check(ns4.Get("look.enemyGuild.scale") == 90 and ns4.Get("look.friendGuild.scale") == 90 and ns4.Get("look.enemyHealth.alpha") == 70 and ns4.Get("look.friendHealth.alpha") == 70, "0.10 guild and numbers look goes to both sides")
 check(ns4.Get("look.petName.alpha") == 40 and ns4.Get("look.dispel.y") == 3, "pets keep the ally name's opacity, the ally row keeps its offset")
 check(ns4.Get("look.friendName.color") == "class" and ns4.Get("look.petName.color") == "white" and ns4.Get("plates.friendHealth") == "both", "switches become choices")
@@ -1001,10 +1001,10 @@ check(ns4.Get("auras.mineTimer") is False and ns4.Get("auras.dispelTimer") is Fa
 check(ns4.db.version == 4 and len(G4.ERRORS) == 0, "database version 4, no errors")
 
 # ---------------------------------------------------------------- 0.12.0 frames switch
-old_db = 'ForeverPlatesCharDB = { preset = "auto", version = 3, overrides = { ["frames.enabled"] = true, ["frames.target.health"] = "current" } }'
+old_db = 'ForeverPlatesPlusCharDB = { preset = "auto", version = 3, overrides = { ["frames.enabled"] = true, ["frames.target.health"] = "current" } }'
 L5, ns5 = new_runtime(cvars_override=old_db)
 G5 = L5.globals()
-G5.FireEvent("ADDON_LOADED", "ForeverPlates"); G5.FireEvent("PLAYER_LOGIN"); G5.RunTimers()
+G5.FireEvent("ADDON_LOADED", "ForeverPlatesPlus"); G5.FireEvent("PLAYER_LOGIN"); G5.RunTimers()
 check(ns5.Get("frames.player.health") == "currentPercent" and ns5.Get("frames.target.health") == "current" and ns5.Get("frames.tot.mana") == "none" and ns5.db.overrides["frames.enabled"] is None, "a frames block that was on keeps its texts; the switch is gone")
 check(len(G5.ERRORS) == 0, "no errors carrying the frames switch over")
 

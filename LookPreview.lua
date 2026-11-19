@@ -572,14 +572,14 @@ end
 ------------------------------------------------------------------------
 
 function ns.SetUpPreviewMixin()
-	if ForeverPlatesPreviewMixin then
+	if ForeverPlatesPlusPreviewMixin then
 		return true
 	end
 	if not SettingsListSectionHeaderMixin or not CreateFromMixins then
 		return false
 	end
-	ForeverPlatesPreviewMixin = CreateFromMixins(SettingsListSectionHeaderMixin)
-	function ForeverPlatesPreviewMixin:Init(initializer)
+	ForeverPlatesPlusPreviewMixin = CreateFromMixins(SettingsListSectionHeaderMixin)
+	function ForeverPlatesPlusPreviewMixin:Init(initializer)
 		SettingsListSectionHeaderMixin.Init(self, initializer)
 		local title = self.Title
 		title:SetFontObject("GameFontNormal")
@@ -588,7 +588,7 @@ function ns.SetUpPreviewMixin()
 		local data = initializer.data or {}
 		local ok, err = pcall(Show, self, data.kind or "enemy")
 		if not ok then
-			geterrorhandler()("ForeverPlates sketch: " .. tostring(err))
+			geterrorhandler()("ForeverPlatesPlus sketch: " .. tostring(err))
 		end
 	end
 	return true
@@ -602,7 +602,7 @@ function ns.RefreshLookPreview()
 		if frame.fpKind == kind and frame:IsVisible() then
 			local ok, err = pcall(Draw, frame.fpSketches[kind])
 			if not ok then
-				geterrorhandler()("ForeverPlates sketch: " .. tostring(err))
+				geterrorhandler()("ForeverPlatesPlus sketch: " .. tostring(err))
 			end
 		end
 	end

@@ -7,7 +7,7 @@ ns.modules = {}
 ns.activePlates = {}   -- [unitToken] = unitFrame of the game's nameplate
 
 local function Print(...)
-	print("|cff8fb8ffForeverPlates|r:", ...)
+	print("|cff8fb8ffForeverPlatesPlus|r:", ...)
 end
 ns.Print = Print
 
@@ -37,7 +37,7 @@ local function CallModules(method, ...)
 		if fn then
 			local ok, err = pcall(fn, module, ...)
 			if not ok then
-				geterrorhandler()(("ForeverPlates %s.%s: %s"):format(module.name, method, tostring(err)))
+				geterrorhandler()(("ForeverPlatesPlus %s.%s: %s"):format(module.name, method, tostring(err)))
 			end
 		end
 	end
@@ -146,8 +146,8 @@ local function MigrateSides(overrides)
 end
 
 local function InitDB()
-	ForeverPlatesCharDB = ForeverPlatesCharDB or {}
-	local db = ForeverPlatesCharDB
+	ForeverPlatesPlusCharDB = ForeverPlatesPlusCharDB or {}
+	local db = ForeverPlatesPlusCharDB
 	if type(db.preset) ~= "string" then
 		db.preset = "auto"
 	end
@@ -416,9 +416,9 @@ end)
 -- slash commands
 ------------------------------------------------------------------------
 
-SLASH_FOREVERPLATES1 = "/fpl"
-SLASH_FOREVERPLATES2 = "/foreverplates"
-SlashCmdList.FOREVERPLATES = function(msg)
+SLASH_FOREVERPLATESPLUS1 = "/fpl"
+SLASH_FOREVERPLATESPLUS2 = "/foreverplates"
+SlashCmdList.FOREVERPLATESPLUS = function(msg)
 	local cmd, arg = strsplit(" ", strtrim(msg or ""), 2)
 	cmd = (cmd or ""):lower()
 

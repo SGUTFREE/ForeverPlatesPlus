@@ -2,6 +2,12 @@
 
 Версия — три числа `X.Y.Z`. Правило — в разделе «Версии» в README.
 
+## 0.13.0
+
+- Новое название — **ForeverPlatesPlus**, одно на всех уровнях: в игре, папка и файлы аддона, CurseForge, GitHub.
+- Папка аддона теперь `ForeverPlatesPlus`. Старую папку `ForeverPlates` удалите: иначе в игре будут работать оба аддона сразу.
+- Настройки хранятся под новым именем, поэтому ваши правки один раз вернутся к пресету.
+
 ## 0.12.4
 
 - Английские подписи — словами самой игры: Personal debuffs, Dispellable debuffs, Purgeable buffs, Aggro display, Minions, Minor enemies, Show offscreen nameplates, Highlight important casts и т.д.; американское написание (color, gray). Страницы в английском клиенте — Enemy, Friendly, Friendly pet.
