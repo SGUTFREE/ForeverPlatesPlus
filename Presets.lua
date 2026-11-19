@@ -134,23 +134,22 @@ ns.BASE = {
 	-- every offset ("look.<element>.x" / ".y", "look.addonAuras.x" / ".y" for the enemy's two aura rows) is 0 by default
 
 	-- text on the health and mana bars of your unit frame, your target's and your target's target
-	-- (UnitFrames.lua). Off until turned on; then these formats apply, "game" leaves a bar to the game.
+	-- (UnitFrames.lua). "game" leaves a bar to the game (the default); any other format takes over that bar.
 	-- formats: game | none | current | percent | currentPercent | currentMax | currentMaxPercent |
 	--          missing | missingPercent | split (percent left, current right)
 	-- when: always | combat | noCombat
-	["frames.enabled"]        = false,
 	["frames.number"]         = "short", -- short (12.3k) | full (12 345) | game
 	["frames.decimals"]       = 1,
-	["frames.player.health"]  = "currentPercent",
-	["frames.player.mana"]    = "current",
+	["frames.player.health"]  = "game",
+	["frames.player.mana"]    = "game",
 	["frames.player.when"]    = "always",
 	["frames.player.scale"]   = 100,
-	["frames.target.health"]  = "currentPercent",
-	["frames.target.mana"]    = "current",
+	["frames.target.health"]  = "game",
+	["frames.target.mana"]    = "game",
 	["frames.target.when"]    = "always",
 	["frames.target.scale"]   = 100,
-	["frames.tot.health"]     = "percent",
-	["frames.tot.mana"]       = "none",
+	["frames.tot.health"]     = "game",
+	["frames.tot.mana"]       = "game",
 	["frames.tot.when"]       = "always",
 	["frames.tot.scale"]      = 80,      -- its bars are small
 

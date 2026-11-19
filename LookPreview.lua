@@ -24,7 +24,7 @@ local SAMPLE_COLOR = {
 	petName = { class = { 0.67, 0.83, 0.45 } },                             -- a hunter's pet
 }
 
-ns.SKETCH_HEIGHT = { enemy = 200, ally = 150, pet = 124, frames = 140 }
+ns.SKETCH_HEIGHT = { enemy = 200, ally = 150, pet = 124, frames = 156 }
 
 -- sketch region -> part of the page (the regions are built in Build)
 local REGIONS = {
@@ -42,7 +42,7 @@ local REGIONS = {
 		{ "bar", "plate" }, { "petName", "name" }, { "petOwner", "owner" },
 	},
 	frames = {
-		{ "background", "plate" }, { "player", "player" }, { "target", "target" }, { "tot", "tot" },
+		{ "background", "plate" }, { "numbers", "plate" }, { "player", "player" }, { "target", "target" }, { "tot", "tot" },
 	},
 }
 
@@ -80,9 +80,9 @@ local IS_ON = {
 		owner = function() return Any("plates.petOwner") end,
 	},
 	frames = {
-		player = function() return Any("frames.enabled") end,
-		target = function() return Any("frames.enabled") end,
-		tot = function() return Any("frames.enabled") end,
+		player = function() return ns.UnitFrameChanged("player") end,
+		target = function() return ns.UnitFrameChanged("target") end,
+		tot = function() return ns.UnitFrameChanged("tot") end,
 	},
 }
 
@@ -282,6 +282,10 @@ local function BuildFrames(canvas, parts)
 		parts[frameKey] = box
 		parts.frameBars[frameKey] = { health = NewBarStrings(health), mana = NewBarStrings(mana) }
 	end
+	-- the settings for every frame (how numbers are written): a label of its own to click
+	local numbers = NewText(canvas, "", { "GameFontNormalSmall", "GameFontNormal" })
+	numbers:SetPoint("TOPLEFT", canvas, "TOPLEFT", 14, -80)
+	parts.numbers = numbers
 end
 
 local BUILDERS = { enemy = BuildEnemy, ally = BuildAlly, pet = BuildPet, frames = BuildFrames }
@@ -498,6 +502,8 @@ end
 
 local function DrawFrames(parts)
 	local style, decimals = ns.Get("frames.number"), ns.Get("frames.decimals")
+	local sampleOk, sample = pcall(ns.FormatNumber, 12345, style, decimals)
+	parts.numbers:SetText(L.FRAMES_NUMBERS_LABEL:format(sampleOk and sample or ""))
 	for frameKey, sample in pairs(FRAME_SAMPLES) do
 		local faint = Faint("frames", frameKey)
 		local scale = (tonumber(ns.Get("frames." .. frameKey .. ".scale")) or 100) / 100
@@ -506,7 +512,7 @@ local function DrawFrames(parts)
 			local strings = parts.frameBars[frameKey][kind]
 			local cur, max = sample[kind][1], sample[kind][2]
 			local format = ns.Get("frames." .. frameKey .. "." .. kind)
-			if format == "game" or not ns.Get("frames.enabled") then
+			if format == "game" then
 				-- what the game writes with its status text on: value / max
 				ns.RenderBarText(strings, "currentMax", cur, max, max - cur, cur / max * 100, "full", 0)
 				for _, text in pairs(strings) do
@@ -533,7 +539,7 @@ local function Draw(sketch)
 	local label = ns.PartLabel and ns.PartLabel(sketch.kind, selected) or selected
 	local text = label .. ": " .. (L["HINT_" .. sketch.kind .. "_" .. selected] or "")
 	if not ns.IsPartOn(sketch.kind, selected) then
-		text = text .. " " .. L.PART_OFF_NOW
+		text = text .. " " .. (sketch.kind == "frames" and L.FRAMES_GAME_NOW or L.PART_OFF_NOW)
 	end
 	sketch.hint:SetText(text)
 end

@@ -810,14 +810,19 @@ phb, pmb = pmain.HealthBarsContainer.HealthBar, pmain.ManaBarArea.ManaBar
 thb = G.TargetFrame.TargetFrameContent.TargetFrameContentMain.HealthBarsContainer.HealthBar
 tot = G.TargetFrame.totFrame.HealthBar
 ns.UpdateUnitFrames()
-check(ns.Get("frames.enabled") is False and ns.GetFrameOverlay(phb) is None and phb.TextString.alpha != 0, "frames block off by default: the game's bars untouched")
-ns.Set("frames.enabled", True)
+check(ns.GetFrameOverlay(phb) is None and ns.GetFrameOverlay(thb) is None and phb.TextString.alpha != 0, "every bar as in the game by default: nothing touched")
+ns.Set("frames.target.health", "current")
+to = ns.GetFrameOverlay(thb)
+check(to is not None and L.eval("function(t) return issecretvalue(t) end")(to.center.text) and thb.TextString.alpha == 0 and len(G.ERRORS) == 0, "target's health set to current: shown right away (secret here), the game's text hidden, no errors")
+check(ns.GetFrameOverlay(phb) is None and phb.TextString.alpha != 0, "your frame still the game's")
+L.execute("UNITS.target.health = 45600; UNITS.target.maxHealth = 80000"); ns.UpdateUnitFrames()
+check(to.center.text == "45.6к", "target's current health: 45.6к")
+ns.Set("frames.player.health", "currentPercent"); ns.Set("frames.player.mana", "current")
 po = ns.GetFrameOverlay(phb)
-check(po is not None and po.center.text == "12.3к (85%)" and phb.TextString.alpha == 0 and phb.LeftText.alpha == 0, "your health: current and percent, the game's text hidden")
-check(ns.GetFrameOverlay(pmb).center.text == "8.2к", "your mana: current")
-check(L.eval("function(t) return issecretvalue(t) end")(ns.GetFrameOverlay(thb).center.text) and len(G.ERRORS) == 0, "target's secret health still shown (secret text), no errors")
+check(po.center.text == "12.3к (85%)" and phb.LeftText.alpha == 0 and ns.GetFrameOverlay(pmb).center.text == "8.2к", "your health: current and percent; mana: current")
+ns.Set("frames.tot.health", "percent")
 check(ns.GetFrameOverlay(tot).center.text == "36%" and abs(ns.GetFrameOverlay(tot).center.textScale - 0.8) < 1e-9, "target of target: percent, smaller text, on a bar without the game's texts")
-check(ns.GetFrameOverlay(G.TargetFrame.totFrame.ManaBar).center.text == "", "its mana: nothing")
+check(ns.GetFrameOverlay(G.TargetFrame.totFrame.ManaBar) is None, "its mana left to the game")
 for fmt, expected in (("current", "12.3к"), ("percent", "85%"), ("currentMax", "12.3к / 14.5к"), ("currentMaxPercent", "12.3к / 14.5к (85%)"), ("missing", "-2.1к"), ("missingPercent", "-2.1к (85%)")):
     ns.Set("frames.player.health", fmt)
     check(po.center.text == expected, f"health as {fmt}: {po.center.text!r}")
@@ -839,11 +844,12 @@ L.execute("UNITS.player.dead = nil"); ns.UpdateUnitFrames()
 ns.Set("frames.player.health", "missing"); ns.CopyFrameText("player")
 check(ns.Get("frames.target.health") == "missing" and ns.Get("frames.tot.health") == "missing" and ns.Get("frames.tot.scale") == 80, "the same on the other frames (sizes stay)")
 ns.ResetOverrides()
-check(ns.Get("frames.enabled") is False and phb.TextString.alpha == 1 and po.center.text == "", "off again: the game's texts back")
+check(phb.TextString.alpha == 1 and thb.TextString.alpha == 1 and po.center.text == "" and to.center.text == "", "all as in the game again: the game's texts back")
 pf = S["FOREVERPLATES_UI_PART_FRAMES"]
-check(pf.page == "Фреймы" and [d.value for d in pf.getOptions().values()] == ["plate", "player", "target", "tot"], "Frames page: general, your frame, target, target of target")
+check(pf.page == "Фреймы" and [d.value for d in pf.getOptions().values()] == ["plate", "player", "target", "tot"], "Frames page: numbers, your frame, target, target of target")
+check(S["FOREVERPLATES_FRAMES_ENABLED"] is None, "no separate switch for the block")
 pf.set("tot")
-check(shows("FOREVERPLATES_FRAMES_TOT_HEALTH") and not shows("FOREVERPLATES_FRAMES_PLAYER_HEALTH") and not shows("FOREVERPLATES_FRAMES_ENABLED"), "a frame's options listed alone")
+check(shows("FOREVERPLATES_FRAMES_TOT_HEALTH") and not shows("FOREVERPLATES_FRAMES_PLAYER_HEALTH") and not shows("FOREVERPLATES_FRAMES_NUMBER"), "a frame's options listed alone")
 pf.set("plate")
 check(len(G.ERRORS) == 0, "no errors on frames: " + "; ".join(G.ERRORS[i] for i in range(1, len(G.ERRORS) + 1)))
 
@@ -958,13 +964,16 @@ check(pet_sketch.canvas.shown and [x.part for x in pet_sketch.buttons.values()] 
 check(G2.SETTINGS.layouts["Ally"].inits[2].data["kind"] == "ally" and G2.SETTINGS.layouts["Ally's pet"].inits[2].data["kind"] == "pet", "each page has its own sketch")
 frames_sketch = ns2.ShowSketch(sketch_frame, "frames")
 ps = frames_sketch.parts.frameBars.player.health.center
-check(ps.text == "12 345 / 14 500" and frames_sketch.parts.player.alpha == 0.25, "frames sketch: block off, the game's text drawn faint: " + str(ps.text))
-ns2.Set("frames.enabled", True)
-check(ps.text == "12.3K (85%)" and frames_sketch.parts.player.alpha == 1, "block on: the chosen format in the sketch")
+check(ps.text == "12 345 / 14 500" and frames_sketch.parts.player.alpha == 0.25, "frames sketch: as in the game, drawn faint: " + str(ps.text))
+ns2.Set("frames.player.health", "currentPercent")
+check(ps.text == "12.3K (85%)" and frames_sketch.parts.player.alpha == 1, "a format chosen: shown in the sketch")
 fbtn = [x for x in frames_sketch.buttons.values() if x.part == "target"][0]
 fbtn.scripts["OnClick"](fbtn)
-check(ns2.db.parts["frames"] == "target" and "Target:" in frames_sketch.hint.text, "a frame clicked in the sketch is selected")
-ns2.Set("frames.enabled", False)
+check(ns2.db.parts["frames"] == "target" and "Target:" in frames_sketch.hint.text and "The game writes this text now." in frames_sketch.hint.text, "a frame clicked in the sketch is selected")
+nbtn = [x for x in frames_sketch.buttons.values() if x.part == "plate"]
+check(len(nbtn) == 2 and frames_sketch.parts.numbers.text == "How numbers are written: 12.3K", "a clickable label for how numbers are written")
+ns2.Set("frames.player.health", "game")
+check(G2.SETTINGS["FOREVERPLATES_UI_PART_ENEMY"] is not None and G2.SETTINGS["FOREVERPLATES_UI_PART_ENEMY"].control is None, "with the sketch on the page the part is picked there only (no second list)")
 check(len(G2.ERRORS) == 0, "no errors for warrior run")
 
 # ---------------------------------------------------------------- settings saved by 0.9 are carried over
@@ -976,7 +985,7 @@ o = ns3.db.overrides
 check(ns3.Get("look.enemyName.scale") == 130 and ns3.Get("look.friendName.scale") == 130, "old name size moves to both names")
 check(ns3.Get("plates.guildFriends") is True and ns3.Get("plates.guildEnemies") is True, "old 'guilds on allies and enemies' becomes both checkboxes")
 check(ns3.Get("look.mine.scale") == 150 and ns3.Get("look.friendName.alpha") == 70 and ns3.Get("look.purge.scale") == 100, "icon sizes become percents, ally name opacity kept")
-check(o["plates.nameScale"] is None and o["plates.guild"] is None and o["auras.mineSize"] is None and ns3.db.version == 3, "old keys removed, database version 3")
+check(o["plates.nameScale"] is None and o["plates.guild"] is None and o["auras.mineSize"] is None and ns3.db.version == 4, "old keys removed, database version 4")
 check(len(G3.ERRORS) == 0, "no errors after carrying settings over")
 
 # ---------------------------------------------------------------- settings saved by 0.10 are carried over
@@ -988,7 +997,15 @@ check(ns4.Get("look.enemyGuild.scale") == 90 and ns4.Get("look.friendGuild.scale
 check(ns4.Get("look.petName.alpha") == 40 and ns4.Get("look.dispel.y") == 3, "pets keep the ally name's opacity, the ally row keeps its offset")
 check(ns4.Get("look.friendName.color") == "class" and ns4.Get("look.petName.color") == "white" and ns4.Get("plates.friendHealth") == "both", "switches become choices")
 check(ns4.Get("auras.mineTimer") is False and ns4.Get("auras.dispelTimer") is False and ns4.Get("native.healthValue") is True, "timers per row; the game's number switch back on")
-check(ns4.db.version == 3 and len(G4.ERRORS) == 0, "database version 3, no errors")
+check(ns4.db.version == 4 and len(G4.ERRORS) == 0, "database version 4, no errors")
+
+# ---------------------------------------------------------------- 0.12.0 frames switch
+old_db = 'ForeverPlatesCharDB = { preset = "auto", version = 3, overrides = { ["frames.enabled"] = true, ["frames.target.health"] = "current" } }'
+L5, ns5 = new_runtime(cvars_override=old_db)
+G5 = L5.globals()
+G5.FireEvent("ADDON_LOADED", "ForeverPlates"); G5.FireEvent("PLAYER_LOGIN"); G5.RunTimers()
+check(ns5.Get("frames.player.health") == "currentPercent" and ns5.Get("frames.target.health") == "current" and ns5.Get("frames.tot.mana") == "none" and ns5.db.overrides["frames.enabled"] is None, "a frames block that was on keeps its texts; the switch is gone")
+check(len(G5.ERRORS) == 0, "no errors carrying the frames switch over")
 
 print()
 print("FAILURES:", len(failures))

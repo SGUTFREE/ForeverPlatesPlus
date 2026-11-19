@@ -161,7 +161,20 @@ local function InitDB()
 	if version < 3 then
 		MigrateSides(db.overrides)
 	end
-	db.version = 3
+	if version < 4 then
+		-- 0.12.0 had a switch for the frames block with ready formats behind it; now each bar is chosen
+		-- on its own ("as in the game" until then): keep what was on
+		local overrides = db.overrides
+		if overrides["frames.enabled"] == true then
+			local old = { player = { "currentPercent", "current" }, target = { "currentPercent", "current" }, tot = { "percent", "none" } }
+			for frameKey, formats in pairs(old) do
+				overrides["frames." .. frameKey .. ".health"] = overrides["frames." .. frameKey .. ".health"] or formats[1]
+				overrides["frames." .. frameKey .. ".mana"] = overrides["frames." .. frameKey .. ".mana"] or formats[2]
+			end
+		end
+		overrides["frames.enabled"] = nil
+	end
+	db.version = 4
 	ns.db = db
 end
 

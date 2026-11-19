@@ -1,8 +1,8 @@
 local _, ns = ...
 
 -- Text on the health and mana bars of your own unit frame, your target's and your target's target.
--- Off until turned on (frames.enabled). While a format of ours is chosen for a bar, the game's own texts
--- on it are made invisible and ours are drawn on top, in the same font and place.
+-- Every bar is the game's ("as in the game") until a format is chosen for it; then the game's own texts
+-- on that bar are made invisible and ours are drawn on top, in the same font and place.
 -- Health and power may be secret values in Forever: here they are never compared or calculated with,
 -- only handed to the game's number formatters and to SetFormattedText, which accept them.
 local M = ns.RegisterModule("UnitFrames", {})
@@ -311,8 +311,33 @@ local function UpdateFrame(frameKey)
 	UpdateBar(def.mana(), unit, "mana", ns.Get(prefix .. "mana"), visible, scale)
 end
 
+-- is any bar given a format of ours
+local function Active()
+	for _, frameKey in ipairs(ns.UNIT_FRAMES) do
+		for _, kind in ipairs({ "health", "mana" }) do
+			local format = ns.Get("frames." .. frameKey .. "." .. kind)
+			if format and format ~= "game" then
+				return true
+			end
+		end
+	end
+	return false
+end
+ns.UnitFramesActive = Active
+
+-- does a frame have a bar of ours (for the settings sketch)
+function ns.UnitFrameChanged(frameKey)
+	for _, kind in ipairs({ "health", "mana" }) do
+		local format = ns.Get("frames." .. frameKey .. "." .. kind)
+		if format and format ~= "game" then
+			return true
+		end
+	end
+	return false
+end
+
 local function UpdateAll()
-	if not ns.Get("frames.enabled") then
+	if not Active() then
 		return
 	end
 	for _, frameKey in ipairs(ns.UNIT_FRAMES) do
@@ -347,9 +372,7 @@ local function Start()
 			pcall(driver.RegisterEvent, driver, event)
 		end
 		driver:SetScript("OnEvent", function()
-			if ns.Get("frames.enabled") then
-				UpdateAll()
-			end
+			UpdateAll()
 		end)
 	end
 	driver:SetScript("OnUpdate", OnUpdate)
@@ -375,7 +398,7 @@ function ns.CopyFrameText(fromKey)
 end
 
 function M:OnLogin()
-	if ns.Get("frames.enabled") then
+	if Active() then
 		Start()
 	end
 end
@@ -384,8 +407,8 @@ function M:Apply(key)
 	if key and not key:find("^frames%.") then
 		return
 	end
-	if ns.Get("frames.enabled") then
-		Start()
+	if Active() then
+		Start() -- bars set back to "as in the game" are given back on this first refresh
 	else
 		Stop()
 	end

@@ -349,8 +349,9 @@ local function NameplatePage(kind, name, about, parts, sketchTitle, partLabel)
 	end
 	Description(about)
 
-	if ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
-		and C_XMLUtil.GetTemplateInfo(SKETCH_TEMPLATE) and Settings.CreateElementInitializer then
+	local hasSketch = ns.SetUpPreviewMixin and ns.SetUpPreviewMixin() and C_XMLUtil and C_XMLUtil.GetTemplateInfo
+		and C_XMLUtil.GetTemplateInfo(SKETCH_TEMPLATE) and Settings.CreateElementInitializer and true or false
+	if hasSketch then
 		local initializer = Settings.CreateElementInitializer(SKETCH_TEMPLATE, { name = sketchTitle or L.SKETCH_TITLE, tooltip = L.SKETCH_TT, kind = kind })
 		local height = ns.SKETCH_HEIGHT and ns.SKETCH_HEIGHT[kind] or 160
 		initializer.GetExtent = function()
@@ -359,18 +360,25 @@ local function NameplatePage(kind, name, about, parts, sketchTitle, partLabel)
 		layout:AddInitializer(initializer)
 	end
 
-	local _, setting = Dropdown("ui.part." .. kind, partLabel or L.PART, L.PART_TT, parts, nil,
-		function()
-			return ns.GetPart(kind)
-		end,
-		function(value)
-			ns.db.parts = ns.db.parts or {}
-			ns.db.parts[kind] = value
-			if ns.RefreshLookPreview then
-				ns.RefreshLookPreview()
-			end
-		end,
-		"plate")
+	-- the selected part is a setting of its own: changing it makes the game re-check which options
+	-- are listed. With the sketch on the page the part is picked there only (no second list for it).
+	local function GetSelected()
+		return ns.GetPart(kind)
+	end
+	local function SetSelected(value)
+		ns.db.parts = ns.db.parts or {}
+		ns.db.parts[kind] = value
+		if ns.RefreshLookPreview then
+			ns.RefreshLookPreview()
+		end
+	end
+	local setting
+	if hasSketch then
+		setting = Register("ui.part." .. kind, Settings.VarType.String, partLabel or L.PART, GetSelected, SetSelected, "plate")
+	else
+		local _
+		_, setting = Dropdown("ui.part." .. kind, partLabel or L.PART, L.PART_TT, parts, nil, GetSelected, SetSelected, "plate")
+	end
 	partSettings[kind] = setting
 	pageKind = kind
 end
@@ -725,7 +733,6 @@ local function BuildFrames()
 	}, L.SKETCH_TITLE_FRAMES, L.PART_FRAME)
 
 	Part("plate")
-	Checkbox("frames.enabled", L.FRAMES_ENABLED, L.FRAMES_ENABLED_TT)
 	Dropdown("frames.number", L.FRAMES_NUMBER, nil, {
 		{ "short", L.HEALTH_FORMAT_SHORT },
 		{ "full", L.HEALTH_FORMAT_FULL },
