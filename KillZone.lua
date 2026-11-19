@@ -206,6 +206,9 @@ local function IsTargetFrame(unitFrame)
 end
 
 local function ShouldShow(unit, unitFrame)
+	if ns.LeftToGame(unit) then
+		return false
+	end
 	if not ns.Get("killzone.enabled") then
 		return false
 	end
@@ -344,7 +347,7 @@ function M:OnUnitEvent(event, unit, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^killzone%.") then
+	if key and not key:find("^killzone%.") and key ~= "plates.enemies" then
 		return
 	end
 	if key == nil or key == "killzone.spell" then

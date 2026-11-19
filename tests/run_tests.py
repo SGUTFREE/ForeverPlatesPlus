@@ -321,6 +321,15 @@ check(ns.GetSubtitleLine(u3).shown and len(points("nameplate3")) == 1, "on again
 ns.Set("plates.guildFriends", False)
 L.execute('UNITS.nameplate3.guild = nil')
 G.FireEvent("UNIT_NAME_UPDATE", "nameplate3"); G.RunTimers()
+# "Change enemy nameplates" off: enemy plates and the game's options for them are the game's
+c1 = find(uf("nameplate1"), "AuraContainer")
+check(c1 is not None and c1.shown, "enemy: our debuff row")
+ns.Set("plates.enemies", False); G.RunTimers()
+check(not c1.shown and cv["nameplateEnemyNpcAuraDisplay"] == G.C_CVar.GetCVarDefault("nameplateEnemyNpcAuraDisplay")
+      and cv["nameplateCastBarDisplay"] == G.C_CVar.GetCVarDefault("nameplateCastBarDisplay"), "enemy plates off: no rows of ours, the game's options for enemies back to defaults")
+check(ns.LeftToGame("nameplate1") and not ns.LeftToGame("nameplate3"), "only enemies are left to the game")
+ns.Set("plates.enemies", True); G.RunTimers()
+check(c1.shown, "enemy plates on again: our rows back")
 # an enemy player's pet: the owner's class colour with "Class color (players and their pets)"
 L.execute('UNITS.nameplate11 = { canAttack = true, isPlayer = true, isFriend = false, name = "Вражина", class = "HUNTER", maxHealth = 900 }')
 L.execute('UNITS.nameplate12 = { canAttack = true, isPlayer = false, isFriend = false, isPet = true, name = "Волк", ownerLine = "Питомец Вражины", maxHealth = 400 }')
@@ -677,9 +686,14 @@ pe = S["FOREVERPLATESPLUS_UI_PART_ENEMY"]
 shows = lambda var: S[var].init.ShouldShow(S[var].init)
 check(pe.page == "Враг" and [d.value for d in pe.getOptions().values()][:4] == ["plate", "name", "guild", "health"], "part list on the Enemy page")
 pe.set("plate")
-check(shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES") and not shows("FOREVERPLATESPLUS_LOOK_ENEMYNAME_SCALE") and not shows("FOREVERPLATESPLUS_INFO_QUEST"), "'whole nameplate': only its options listed")
+check(shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES") and shows("FOREVERPLATESPLUS_INFO_QUEST") and shows("FOREVERPLATESPLUS_AURAS_MINE"),
+      "main block (stacking, what to show) listed whatever part is picked")
+check(shows("FOREVERPLATESPLUS_NATIVE_ENEMYMINIONS") and not shows("FOREVERPLATESPLUS_LOOK_ENEMYNAME_SCALE"), "'whole nameplate': only its own options under the sketch")
 pe.set("quest")
-check(shows("FOREVERPLATESPLUS_INFO_QUEST") and shows("FOREVERPLATESPLUS_LOOK_QUEST_SCALE") and not shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES"), "quest marker part: show it or not, its size...")
+check(shows("FOREVERPLATESPLUS_LOOK_QUEST_SCALE") and not shows("FOREVERPLATESPLUS_NATIVE_ENEMYMINIONS") and shows("FOREVERPLATESPLUS_INFO_QUEST"), "quest marker part: its size and place; showing it is in the main block")
+ns.Set("plates.enemies", False)
+check(shows("FOREVERPLATESPLUS_PLATES_ENEMIES") and not shows("FOREVERPLATESPLUS_NATIVE_STACKENEMIES") and not shows("FOREVERPLATESPLUS_LOOK_QUEST_SCALE"), "enemy plates left to the game: only the switch is listed")
+ns.Set("plates.enemies", True)
 ns.Set("fade.range", False); pe.set("plate")
 check(not shows("FOREVERPLATESPLUS_FADE_RANGEALPHA"), "out-of-range opacity hidden while fading is off")
 ns.Set("fade.range", True)
@@ -885,11 +899,11 @@ check(ns.Get("frames.target.health") == "missing" and ns.Get("frames.tot.health"
 ns.ResetOverrides()
 check(phb.TextString.alpha == 1 and thb.TextString.alpha == 1 and po.center.text == "" and to.center.text == "", "all as in the game again: the game's texts back")
 pf = S["FOREVERPLATESPLUS_UI_PART_FRAMES"]
-check(pf.page == "Фреймы" and [d.value for d in pf.getOptions().values()] == ["plate", "player", "target", "tot"], "Frames page: numbers, your frame, target, target of target")
+check(pf.page == "Фреймы" and [d.value for d in pf.getOptions().values()] == ["player", "target", "tot"], "Frames page: your frame, target, target of target (number format in the main block)")
 check(S["FOREVERPLATESPLUS_FRAMES_ENABLED"] is None, "no separate switch for the block")
 pf.set("tot")
-check(shows("FOREVERPLATESPLUS_FRAMES_TOT_HEALTH") and not shows("FOREVERPLATESPLUS_FRAMES_PLAYER_HEALTH") and not shows("FOREVERPLATESPLUS_FRAMES_NUMBER"), "a frame's options listed alone")
-pf.set("plate")
+check(shows("FOREVERPLATESPLUS_FRAMES_TOT_HEALTH") and not shows("FOREVERPLATESPLUS_FRAMES_PLAYER_HEALTH") and shows("FOREVERPLATESPLUS_FRAMES_NUMBER"), "a frame's options listed alone, the number format above them")
+pf.set("player")
 check(len(G.ERRORS) == 0, "no errors on frames: " + "; ".join(G.ERRORS[i] for i in range(1, len(G.ERRORS) + 1)))
 
 # proxy settings round trip
@@ -973,15 +987,20 @@ check(len(pn2("nameplate1")) == 2, "Modern, enemy in target (numbers shown): the
 L2.execute("PLATES.target = nil"); G2.FireEvent("PLAYER_TARGET_CHANGED")
 check(len(pn2("nameplate1")) == 1, "target cleared: name free again")
 inits = G2.SETTINGS.layouts["Enemy"].inits
-check(inits[1].template == "ForeverPlatesPlusDescriptionTemplate" and inits[2].template == "ForeverPlatesPlusPreviewTemplate" and inits[2].data["kind"] == "enemy" and inits[2].GetExtent() == 200, "Enemy page: description, then the sketch")
+def sketch_index(page):
+    page_inits = G2.SETTINGS.layouts[page].inits
+    return [i for i in range(1, len(page_inits) + 1) if page_inits[i].template == "ForeverPlatesPlusPreviewTemplate"]
+si = sketch_index("Enemy")
+check(inits[1].template == "ForeverPlatesPlusDescriptionTemplate" and len(si) == 1 and si[0] > 2 and inits[si[0]].data["kind"] == "enemy" and inits[si[0]].GetExtent() == 200,
+      "Enemy page: description, the main block, then the sketch")
 sketch_frame = L2.eval("function() local f = CreateFrame('Frame'); f.Title = f:CreateFontString(); return f end")()
-G2.ForeverPlatesPlusPreviewMixin.Init(sketch_frame, inits[2])
+G2.ForeverPlatesPlusPreviewMixin.Init(sketch_frame, inits[si[0]])
 enemy_sketch = sketch_frame.fpSketches["enemy"]
 check(enemy_sketch is not None and sketch_frame.headerInit is not None and enemy_sketch.hint.text.startswith("The whole nameplate:"), "sketch drawn, the selected part explained under it: " + str(enemy_sketch.hint.text)[:60])
 guild_button = [x for x in enemy_sketch.buttons.values() if x.part == "guild"]
 check(len(guild_button) == 1, "the guild is a clickable part of the enemy sketch")
 guild_button[0].scripts["OnClick"](guild_button[0])
-check(ns2.db.parts["enemy"] == "guild" and "Currently off." in enemy_sketch.hint.text and guild_button[0].selected.shown, "click selects the part; the hint says it is off now")
+check(ns2.db.parts["enemy"] == "guild" and "Currently off: turn it on under Main above." in enemy_sketch.hint.text and guild_button[0].selected.shown, "click selects the part; the hint says it is off and where to turn it on")
 check(abs(enemy_sketch.parts.enemyGuild.alpha - 0.85 * 0.25) < 1e-9, "parts turned off are drawn faint")
 ns2.Set("look.enemyName.y", 6)
 en = enemy_sketch.parts.enemyName
@@ -1000,8 +1019,8 @@ ns2.Set("info.quest", True)
 ally_sketch = ns2.ShowSketch(sketch_frame, "ally")
 check(not enemy_sketch.canvas.shown and ally_sketch.canvas.shown and len(ally_sketch.buttons) == 6, "the same list frame shows the ally sketch on the Ally page")
 pet_sketch = ns2.ShowSketch(sketch_frame, "pet")
-check(pet_sketch.canvas.shown and [x.part for x in pet_sketch.buttons.values()] == ["plate", "name", "owner"], "pet sketch: plate, name, owner")
-check(G2.SETTINGS.layouts["Friendly"].inits[2].data["kind"] == "ally" and G2.SETTINGS.layouts["Friendly pet"].inits[2].data["kind"] == "pet", "each page has its own sketch")
+check(pet_sketch.canvas.shown and [x.part for x in pet_sketch.buttons.values()] == ["name", "name", "owner"], "pet sketch: the bar and the name pick the name, the owner line its own part")
+check(G2.SETTINGS.layouts["Friendly"].inits[sketch_index("Friendly")[0]].data["kind"] == "ally" and G2.SETTINGS.layouts["Friendly pet"].inits[sketch_index("Friendly pet")[0]].data["kind"] == "pet", "each page has its own sketch")
 frames_sketch = ns2.ShowSketch(sketch_frame, "frames")
 ps = frames_sketch.parts.frameBars.player.health.center
 check(ps.text == "12 345 / 14 500" and frames_sketch.parts.player.alpha == 0.25, "frames sketch: as in the game, drawn faint: " + str(ps.text))
@@ -1011,7 +1030,7 @@ fbtn = [x for x in frames_sketch.buttons.values() if x.part == "target"][0]
 fbtn.scripts["OnClick"](fbtn)
 check(ns2.db.parts["frames"] == "target" and "Target:" in frames_sketch.hint.text and "The game writes this text now." in frames_sketch.hint.text, "a frame clicked in the sketch is selected")
 nbtn = [x for x in frames_sketch.buttons.values() if x.part == "plate"]
-check(len(nbtn) == 2 and frames_sketch.parts.numbers.text == "Number format: 12.3K", "a clickable label for how numbers are written")
+check(len(nbtn) == 0 and frames_sketch.parts.numbers.text == "Number format: 12.3K", "the sketch shows the number format (set in the main block, not a part)")
 ns2.Set("frames.player.health", "game")
 check(G2.SETTINGS["FOREVERPLATESPLUS_UI_PART_ENEMY"] is not None and G2.SETTINGS["FOREVERPLATESPLUS_UI_PART_ENEMY"].control is None, "with the sketch on the page the part is picked there only (no second list)")
 check(len(G2.ERRORS) == 0, "no errors for warrior run")

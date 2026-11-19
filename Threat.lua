@@ -58,7 +58,7 @@ local function ShouldWarn(unit)
 	if not (IsInGroup and IsInGroup()) or IsTank() then
 		return false
 	end
-	return ns.GetUnitKind(unit) == "enemyNpc"
+	return ns.GetUnitKind(unit) == "enemyNpc" and not ns.LeftToGame(unit)
 end
 
 -- how many values came back (none = we're not on the mob's threat list) and the scaled percentage
@@ -128,7 +128,7 @@ function M:OnUnitEvent(event, unit, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^threat%.") then
+	if key and not key:find("^threat%.") and key ~= "plates.enemies" then
 		return
 	end
 	UpdateAll()

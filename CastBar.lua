@@ -233,7 +233,7 @@ function M:OnInit()
 end
 
 local function SetUpExtras(unit, unitFrame)
-	local wanted = IsEnemy(unit) and (ns.Get("cast.timer") or ns.Get("cast.interruptReady"))
+	local wanted = IsEnemy(unit) and not leftToGame[unitFrame] and (ns.Get("cast.timer") or ns.Get("cast.interruptReady"))
 	local extra = extras[unitFrame]
 	if not wanted then
 		if extra then
@@ -279,7 +279,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^cast%.") and not key:find("^look%.") and key ~= "plates.friends" and key ~= "plates.petNamesOnly" then
+	if key and not key:find("^cast%.") and not key:find("^look%.") and key ~= "plates.friends" and key ~= "plates.enemies" and key ~= "plates.petNamesOnly" then
 		return
 	end
 	ns.ForEachPlate(function(unit, unitFrame)

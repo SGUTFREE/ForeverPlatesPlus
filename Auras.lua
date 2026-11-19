@@ -357,7 +357,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^auras%.") and not key:find("^look%.") and key ~= "plates.friends" and key ~= "plates.petNamesOnly" then
+	if key and not key:find("^auras%.") and not key:find("^look%.") and key ~= "plates.friends" and key ~= "plates.enemies" and key ~= "plates.petNamesOnly" then
 		return
 	end
 	if not HAS_CONTAINERS then

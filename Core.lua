@@ -293,13 +293,21 @@ function ns.GetUnitKind(unit)
 	return isPlayer and "friendlyPlayer" or "friendlyNpc"
 end
 
--- Friendly plates drawn exactly as the game draws them: the Friendly page's "Change friendly nameplates"
--- is off. Allies' pets have their own switch on their page, so a pet shown as a name stays ours.
+-- Plates drawn exactly as the game draws them: "Change enemy nameplates" (Enemy page) or "Change friendly
+-- nameplates" (Friendly page) is off. Allies' pets have their own switch on their page, so a pet shown as
+-- a name stays ours.
 function ns.LeftToGame(unit)
-	if ns.Get("plates.friends") ~= false then
+	local enemiesOff, friendsOff = ns.Get("plates.enemies") == false, ns.Get("plates.friends") == false
+	if not enemiesOff and not friendsOff then
 		return false
 	end
 	local kind = ns.GetUnitKind(unit)
+	if kind == "enemyPlayer" or kind == "enemyNpc" then
+		return enemiesOff
+	end
+	if not friendsOff then
+		return false
+	end
 	if kind == "friendlyPlayer" then
 		return true
 	end

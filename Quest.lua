@@ -79,7 +79,7 @@ end
 
 local function Update(unit, unitFrame)
 	local marker = markers[unitFrame]
-	if not ns.Get("info.quest") or not IsQuestUnit(unit) then
+	if not ns.Get("info.quest") or ns.LeftToGame(unit) or not IsQuestUnit(unit) then
 		if marker and marker:IsShown() then
 			marker:Hide()
 			if ns.PlaceGameAuras then
@@ -141,7 +141,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and key ~= "info.quest" and not key:find("^look%.") then
+	if key and key ~= "info.quest" and not key:find("^look%.") and key ~= "plates.enemies" and key ~= "plates.friends" then
 		return
 	end
 	UpdateAll()

@@ -21,6 +21,7 @@ ns.BASE = {
 	["native.losFade"]        = 0.4,    -- nameplateOccludedAlphaMult, if the client has it
 	["health.format"]         = "short", -- short (12.3K) | full (12 345) | game
 	["health.decimals"]       = 1,       -- decimals in the short format
+	["plates.enemies"]        = true,     -- off: enemy plates exactly as the game draws them
 	["plates.friends"]        = true,     -- off: friendly plates exactly as the game draws them (allies' pets: their own switch)
 	["native.friendNamesOnly"] = "always", -- never | instance | always: ally players show only the name (no bar, no numbers)
 	["plates.petNamesOnly"]     = true,    -- allies' pets and minions: only the name, like ally players

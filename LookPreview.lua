@@ -39,10 +39,10 @@ local REGIONS = {
 		{ "dispel", "dispel" }, { "friendGame", "friendGame" },
 	},
 	pet = {
-		{ "bar", "plate" }, { "petName", "name" }, { "petOwner", "owner" },
+		{ "bar", "name" }, { "petName", "name" }, { "petOwner", "owner" },
 	},
 	frames = {
-		{ "background", "plate" }, { "numbers", "plate" }, { "player", "player" }, { "target", "target" }, { "tot", "tot" },
+		{ "player", "player" }, { "target", "target" }, { "tot", "tot" },
 	},
 }
 
@@ -84,6 +84,13 @@ local IS_ON = {
 		target = function() return ns.UnitFrameChanged("target") end,
 		tot = function() return ns.UnitFrameChanged("tot") end,
 	},
+}
+
+-- parts whose on/off switch is in the page's main block, above the sketch
+local SWITCH_IN_MAIN = {
+	enemy = { guild = true, mine = true, purge = true, killzone = true, castTimer = true, quest = true },
+	ally = { guild = true, dispel = true },
+	pet = { owner = true },
 }
 
 function ns.IsPartOn(kind, part)
@@ -558,7 +565,8 @@ local function Draw(sketch)
 	local label = ns.PartLabel and ns.PartLabel(sketch.kind, selected) or selected
 	local text = label .. ": " .. (L["HINT_" .. sketch.kind .. "_" .. selected] or "")
 	if not ns.IsPartOn(sketch.kind, selected) then
-		text = text .. " " .. (sketch.kind == "frames" and L.FRAMES_GAME_NOW or L.PART_OFF_NOW)
+		local inMain = SWITCH_IN_MAIN[sketch.kind] and SWITCH_IN_MAIN[sketch.kind][selected]
+		text = text .. " " .. (sketch.kind == "frames" and L.FRAMES_GAME_NOW or (inMain and L.PART_OFF_MAIN) or L.PART_OFF_NOW)
 	end
 	sketch.hint:SetText(text)
 end

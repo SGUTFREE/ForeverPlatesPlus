@@ -64,7 +64,7 @@ end
 
 local function DesiredAlpha(unit, unitFrame, targetFrame)
 	local kind = ns.GetUnitKind(unit)
-	if kind ~= "enemyNpc" and kind ~= "enemyPlayer" then
+	if (kind ~= "enemyNpc" and kind ~= "enemyPlayer") or ns.LeftToGame(unit) then
 		return nil
 	end
 	local alpha = 1
@@ -145,7 +145,7 @@ function M:OnPlateRemoved(_, unitFrame)
 end
 
 function M:Apply(key)
-	if key and not key:find("^fade%.") then
+	if key and not key:find("^fade%.") and key ~= "plates.enemies" then
 		return
 	end
 	if key == nil or key == "fade.rangeSpell" then

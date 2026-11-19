@@ -148,6 +148,17 @@ local function FriendsChanged()
 	return ns.Get("plates.friends") ~= false
 end
 
+-- "Change enemy nameplates" off: the same for the options that only concern enemy plates
+local ENEMY_CVARS = { "nameplateEnemyNpcAuraDisplay", "nameplateEnemyPlayerAuraDisplay", "nameplateThreatDisplay",
+	"nameplateCastBarDisplay", "nameplateSimplifiedTypes", "nameplateShowEnemyMinions", "nameplateShowEnemyMinus" }
+local ENEMY_ONLY = {}
+for _, name in ipairs(ENEMY_CVARS) do
+	ENEMY_ONLY[name] = true
+end
+local function EnemiesChanged()
+	return ns.Get("plates.enemies") ~= false
+end
+
 local function ApplyStacking()
 	local enemies = ns.Get("native.stackEnemies")
 	local friends = ns.Get("native.stackFriends")
@@ -163,10 +174,10 @@ local function ApplyStacking()
 end
 
 local function ApplyAll()
-	local friends = FriendsChanged()
+	local friends, enemies = FriendsChanged(), EnemiesChanged()
 	for _, info in ipairs(BITS) do
 		local value = ns.Get(info.key)
-		if info.cvar == "nameplateFriendlyPlayerAuraDisplay" and not friends then
+		if (info.cvar == "nameplateFriendlyPlayerAuraDisplay" and not friends) or (ENEMY_ONLY[info.cvar] and not enemies) then
 			value = nil
 		end
 		if value ~= nil then
@@ -175,6 +186,9 @@ local function ApplyAll()
 	end
 	for _, info in ipairs(OPTIONAL_BOOLS) do
 		local value = ns.Get(info.key)
+		if ENEMY_ONLY[info.cvar] and not enemies then
+			value = nil
+		end
 		if value ~= nil then
 			SetBool(info.cvar, value)
 		end
@@ -185,7 +199,9 @@ local function ApplyAll()
 			SetNumber(info.cvar, value)
 		end
 	end
-	ApplyThreat()
+	if enemies then
+		ApplyThreat()
+	end
 	ApplyStacking()
 	SetBool("nameplateShowAll", ns.Get("native.alwaysShow"))
 	SetBool("nameplateShowOffscreen", ns.Get("native.offscreen"))
@@ -205,6 +221,16 @@ local function ApplyAll()
 			SetToDefault(name)
 		end
 	end
+	if not enemies then
+		for _, name in ipairs(ENEMY_CVARS) do
+			SetToDefault(name)
+		end
+	end
+	-- health numbers: the addon keeps the game's on and hides them per plate; with neither side changed
+	-- the game decides again
+	if not enemies and not friends then
+		SetToDefault("nameplateInfoDisplay")
+	end
 
 	-- Allies' pets: instead of the game's big floating labels, nameplates that the addon turns into a
 	-- white name (see HealthText). In dungeons and raids the addon can't touch ally plates, so pets get
@@ -223,7 +249,7 @@ local function ApplyAll()
 end
 
 function M:Apply(key)
-	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" and key ~= "plates.friends" and key ~= "look.friendName.color" then
+	if key and not key:find("^native%.") and key ~= "plates.petNamesOnly" and key ~= "plates.friends" and key ~= "plates.enemies" and key ~= "look.friendName.color" then
 		return
 	end
 	if not ns.Get("native.manage") then
