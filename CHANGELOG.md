@@ -2,6 +2,12 @@
 
 Версия — три числа `X.Y.Z`. Правило — в разделе «Версии» в README.
 
+## 0.12.4
+
+- Английские подписи — словами самой игры: Personal debuffs, Dispellable debuffs, Purgeable buffs, Aggro display, Minions, Minor enemies, Show offscreen nameplates, Highlight important casts и т.д.; американское написание (color, gray). Страницы в английском клиенте — Enemy, Friendly, Friendly pet.
+- Исправлены устаревшие подсказки: черта добивания тёмная, а не фиолетовая; имя врага бывает и над полосой, и внутри неё.
+- Тест проверяет, что у каждой подписи есть оба языка.
+
 ## 0.12.3
 
 - Новое название: **ForeverPlates**, без плюса и пробела. Совпадает с папкой аддона и репозиторием на GitHub; настройки сохраняются.

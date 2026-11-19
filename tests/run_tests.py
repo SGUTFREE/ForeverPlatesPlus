@@ -900,7 +900,7 @@ G2.FireEvent("ADDON_LOADED", "ForeverPlates"); G2.FireEvent("PLAYER_LOGIN"); G2.
 check(ns2.GetActivePreset() == "BASE", "class without a preset uses BASE")
 check(G2.CVARS["nameplateMotion"] == "1", "falls back to nameplateMotion when stacking types are missing")
 check(G2.SETTINGS["FOREVERPLATES_NATIVE_LOSFADE"] is None, "LOS slider hidden when the client lacks the CVar")
-check(ns2.L.PART_MINE == "My debuffs", "English strings on non-Russian clients")
+check(ns2.L.PART_MINE == "Personal debuffs" and ns2.L.PART_DISPEL == "Dispellable debuffs", "English strings on non-Russian clients, in the game's own terms")
 first = G2.SETTINGS.layout.inits[1]
 check(first.template == "ForeverPlatesDescriptionTemplate" and first.data["name"] == ns2.L.ABOUT_MAIN and first.GetExtent() >= 40, "page description drawn with our template, sized for its text")
 fake = L2.eval("function() local f = CreateFrame('Frame'); f.Title = f:CreateFontString(); return f end")()
@@ -962,7 +962,7 @@ ally_sketch = ns2.ShowSketch(sketch_frame, "ally")
 check(not enemy_sketch.canvas.shown and ally_sketch.canvas.shown and len(ally_sketch.buttons) == 6, "the same list frame shows the ally sketch on the Ally page")
 pet_sketch = ns2.ShowSketch(sketch_frame, "pet")
 check(pet_sketch.canvas.shown and [x.part for x in pet_sketch.buttons.values()] == ["plate", "name", "owner"], "pet sketch: plate, name, owner")
-check(G2.SETTINGS.layouts["Ally"].inits[2].data["kind"] == "ally" and G2.SETTINGS.layouts["Ally's pet"].inits[2].data["kind"] == "pet", "each page has its own sketch")
+check(G2.SETTINGS.layouts["Friendly"].inits[2].data["kind"] == "ally" and G2.SETTINGS.layouts["Friendly pet"].inits[2].data["kind"] == "pet", "each page has its own sketch")
 frames_sketch = ns2.ShowSketch(sketch_frame, "frames")
 ps = frames_sketch.parts.frameBars.player.health.center
 check(ps.text == "12 345 / 14 500" and frames_sketch.parts.player.alpha == 0.25, "frames sketch: as in the game, drawn faint: " + str(ps.text))
@@ -972,7 +972,7 @@ fbtn = [x for x in frames_sketch.buttons.values() if x.part == "target"][0]
 fbtn.scripts["OnClick"](fbtn)
 check(ns2.db.parts["frames"] == "target" and "Target:" in frames_sketch.hint.text and "The game writes this text now." in frames_sketch.hint.text, "a frame clicked in the sketch is selected")
 nbtn = [x for x in frames_sketch.buttons.values() if x.part == "plate"]
-check(len(nbtn) == 2 and frames_sketch.parts.numbers.text == "How numbers are written: 12.3K", "a clickable label for how numbers are written")
+check(len(nbtn) == 2 and frames_sketch.parts.numbers.text == "Number format: 12.3K", "a clickable label for how numbers are written")
 ns2.Set("frames.player.health", "game")
 check(G2.SETTINGS["FOREVERPLATES_UI_PART_ENEMY"] is not None and G2.SETTINGS["FOREVERPLATES_UI_PART_ENEMY"].control is None, "with the sketch on the page the part is picked there only (no second list)")
 check(len(G2.ERRORS) == 0, "no errors for warrior run")
@@ -1007,6 +1007,17 @@ G5 = L5.globals()
 G5.FireEvent("ADDON_LOADED", "ForeverPlates"); G5.FireEvent("PLAYER_LOGIN"); G5.RunTimers()
 check(ns5.Get("frames.player.health") == "currentPercent" and ns5.Get("frames.target.health") == "current" and ns5.Get("frames.tot.mana") == "none" and ns5.db.overrides["frames.enabled"] is None, "a frames block that was on keeps its texts; the switch is gone")
 check(len(G5.ERRORS) == 0, "no errors carrying the frames switch over")
+
+# ---------------------------------------------------------------- every string in both languages
+import re as _re
+_missing = []
+for _line in open(os.path.join(sys.argv[1], "Locale.lua"), encoding="utf-8"):
+    if _line.startswith("T("):
+        _m = _re.match(r'T\("([A-Za-z0-9_]+)",\s*"((?:[^"\\]|\\.)*)",\s*"((?:[^"\\]|\\.)*)"\)', _line)
+        if not _m or not _m.group(2).strip() or not _m.group(3).strip():
+            _missing.append(_line[:40])
+check(not _missing, "every string has Russian and English text: " + "; ".join(_missing))
+check("olour" not in open(os.path.join(sys.argv[1], "Locale.lua"), encoding="utf-8").read(), "English in the game's US spelling (color, not colour)")
 
 print()
 print("FAILURES:", len(failures))
